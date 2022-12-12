@@ -76,7 +76,7 @@ import Agda.Utils.Impossible
 %name exprParser Expr
 %name exprWhereParser ExprWhere
 %name moduleParser File
-%name moduleNameParser ModuleName
+%name moduleNameParser ModuleQName
 %name funclauseParser FunClause
 %name holeContentParser HoleContent
 
@@ -485,10 +485,18 @@ QId : q_id  {% mkQName $1 }
     | Id    { QName $1 }
 
 
--- A module name is just a qualified name
-ModuleName :: { QName }
-ModuleName : QId { $1 }
+Underscore :: { Name }
+Underscore : '_' { noName (getRange $1) }
 
+-- An unqualified module name is either a name or an underscore
+ModuleName :: { Name }
+ModuleName : Id { $1 }
+           | Underscore { $1 }
+
+-- A module name is either a qualified name or an underscore
+ModuleQName :: { QName }
+ModuleQName : QId { $1 }
+            | Underscore { QName $1 }
 
 -- A binding variable. Can be '_'
 BId :: { Name }
@@ -750,7 +758,7 @@ RecordAssignment
 
 ModuleAssignment :: { ModuleAssignment }
 ModuleAssignment
-  : ModuleName OpenArgs ImportDirective  { ModuleAssignment $1 $2 $3 }
+  : ModuleQName OpenArgs ImportDirective  { ModuleAssignment $1 $2 $3 }
 
 FieldAssignments :: { [FieldAssignment] }
 FieldAssignments
@@ -1113,11 +1121,7 @@ WhereClause
     : {- empty -} { NoWhere }
     |                                'where' Declarations0
         { AnyWhere  (getRange $1) $2 }
-    | 'module' Attributes Id         'where' Declarations0
-         {% onlyErased $2 >>= \erased ->
-            return $ SomeWhere (getRange ($1,$4)) erased
-                       $3 PublicAccess $5 }
-    | 'module' Attributes Underscore 'where' Declarations0
+    | 'module' Attributes ModuleName 'where' Declarations0
          {% onlyErased $2 >>= \erased ->
             return $ SomeWhere (getRange ($1,$4)) erased
                        $3 PublicAccess $5 }
@@ -1425,7 +1429,7 @@ MaybeOpen : 'open'      { Just (getRange $1) }
 
 -- Open
 Open :: { List1 Declaration }
-Open : MaybeOpen 'import' ModuleName OpenArgs ImportDirective {%
+Open : MaybeOpen 'import' ModuleQName OpenArgs ImportDirective {%
     let
     { doOpen = maybe DontOpen (const DoOpen) $1
     ; m   = $3
@@ -1480,7 +1484,7 @@ Open : MaybeOpen 'import' ModuleName OpenArgs ImportDirective {%
               []
       }
   }
-  |'open' ModuleName OpenArgs ImportDirective {
+  |'open' ModuleQName OpenArgs ImportDirective {
     let
     { m   = $2
     ; es  = $3
@@ -1498,7 +1502,7 @@ Open : MaybeOpen 'import' ModuleName OpenArgs ImportDirective {%
                  ]
       }
   }
-  | 'open' ModuleName '{{' '...' DoubleCloseBrace ImportDirective {
+  | 'open' ModuleQName '{{' '...' DoubleCloseBrace ImportDirective {
     let r = getRange $2 in singleton $
       Private r Inserted
       [ ModuleMacro r defaultErased (noName $ beginningOf $ getRange $2)
@@ -1511,18 +1515,18 @@ OpenArgs : {- empty -}    { [] }
          | Expr3 OpenArgs { $1 : $2 }
 
 ModuleApplication :: { Telescope -> Parser ModuleApplication }
-ModuleApplication : ModuleName '{{' '...' DoubleCloseBrace { (\ts ->
+ModuleApplication : ModuleQName '{{' '...' DoubleCloseBrace { (\ts ->
                     if null ts then return $ RecordModuleInstance (getRange ($1,$2,$3,$4)) $1
                     else parseError "No bindings allowed for record module with non-canonical implicits" )
                     }
-                  | ModuleName OpenArgs {
+                  | ModuleQName OpenArgs {
                     (\ts -> return $ SectionApp (getRange ($1, $2)) ts (rawApp (Ident $1 :| $2)) ) }
 
 
 -- Module instantiation
 ModuleMacro :: { Declaration }
 ModuleMacro
-  : 'module' Attributes ModuleName TypedUntypedBindings '='
+  : 'module' Attributes ModuleQName TypedUntypedBindings '='
       ModuleApplication ImportDirective
     {% do { ma     <- $6 (map addType $4)
           ; erased <- onlyErased $2
@@ -1531,30 +1535,23 @@ ModuleMacro
                        erased name ma DontOpen $7
           }
     }
-  | 'open' 'module' Attributes Id TypedUntypedBindings '='
+  | 'open' 'module' Attributes ModuleQName TypedUntypedBindings '='
       ModuleApplication ImportDirective
     {% do { ma     <- $7 (map addType $5)
           ; erased <- onlyErased $3
+          ; name   <- ensureUnqual $4
           ; return $ ModuleMacro (getRange ($1, $2, $3, $4, ma, $8))
-                       erased $4 ma DoOpen $8
+                       erased name ma DoOpen $8
           } }
 
 -- Module
 Module :: { Declaration }
 Module
-  : 'module' Attributes ModuleName TypedUntypedBindings 'where'
+  : 'module' Attributes ModuleQName TypedUntypedBindings 'where'
       Declarations0
     {% onlyErased $2 >>= \erased ->
        return $ Module (getRange ($1,$2,$3,$4,$5,$6)) erased
                   $3 (map addType $4) $6 }
-  | 'module' Attributes Underscore TypedUntypedBindings 'where'
-      Declarations0
-    {% onlyErased $2 >>= \erased ->
-       return $ Module (getRange ($1,$2,$3,$4,$5,$6)) erased
-                  (QName $3) (map addType $4) $6 }
-
-Underscore :: { Name }
-Underscore : '_' { noName (getRange $1) }
 
 TopLevel :: { [Declaration] }
 TopLevel : TopDeclarations { figureOutTopLevelModule $1 }
