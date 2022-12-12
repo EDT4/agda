@@ -326,7 +326,6 @@ computeGeneralization genRecMeta nameMap allmetas = postponeInstanceConstraints 
     fmap concat $ forM sortedMetas $ \ m -> do
       mv <- lookupLocalMeta m
       let info =
-            hideOrKeepInstance $
             getArgInfo $ miGeneralizable $ mvInfo mv
           HasType{ jMetaType = t } = mvJudgement mv
           perm = mvPermutation mv
@@ -739,11 +738,7 @@ createGenValue x = setCurrentRange x $ do
                      SomeGeneralizableArgs n -> n
       ty         = defType def
       TelV tel _ = telView' ty
-      -- Generalizable variables are never explicit, so if they're given as
-      -- explicit we default to hidden.
-      hideExplicit arg | visible arg = hide arg
-                       | otherwise   = arg
-      argTel     = telFromList $ map hideExplicit $ take nGen $ telToList tel
+      argTel     = telFromList $ take nGen $ telToList tel
 
   args <- newTelMeta argTel
   metaType <- piApplyM ty args
@@ -769,7 +764,7 @@ createGenValue x = setCurrentRange x $ do
 
   -- Update the ArgInfos for the named meta. The argument metas are
   -- created with the correct ArgInfo.
-  setMetaGeneralizableArgInfo m $ hideExplicit (defArgInfo def)
+  setMetaGeneralizableArgInfo m (defArgInfo def)
 
   reportSDoc "tc.generalize" 50 $ vcat
     [ "created metas for generalized variable" <+> prettyTCM x
