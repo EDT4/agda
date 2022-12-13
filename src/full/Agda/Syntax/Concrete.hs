@@ -479,7 +479,7 @@ data Declaration
   | Import      Range QName (Maybe AsName) !OpenShortHand ImportDirective
   | ModuleMacro Range Erased  Name ModuleApplication !OpenShortHand
                 ImportDirective
-  | Module      Range Erased QName Telescope [Declaration]
+  | Module      Range Erased QName Telescope [Declaration] !OpenShortHand
   | UnquoteDecl Range [Name] Expr
       -- ^ @unquoteDecl xs = e@
   | UnquoteDef  Range [Name] Expr
@@ -896,7 +896,7 @@ instance HasRange Declaration where
   getRange (Private r _ _)         = r
   getRange (Postulate r _)         = r
   getRange (Primitive r _)         = r
-  getRange (Module r _ _ _ _)      = r
+  getRange (Module r _ _ _ _ _)    = r
   getRange (Infix f _)             = getRange f
   getRange (Syntax n _)            = getRange n
   getRange (PatternSyn r _ _ _)    = r
@@ -1052,7 +1052,7 @@ instance KillRange Declaration where
                                     = killRange4
                                         (\e n m -> ModuleMacro noRange e n m o)
                                         e n m i
-  killRange (Module _ e q t d)      = killRange4 (Module noRange) e q t d
+  killRange (Module _ e q t d o)    = killRange4 (\e q t d -> Module noRange e q t d o) e q t d
   killRange (UnquoteDecl _ x t)     = killRange2 (UnquoteDecl noRange) x t
   killRange (UnquoteDef _ x t)      = killRange2 (UnquoteDef noRange) x t
   killRange (UnquoteData _ xs cs t) = killRange3 (UnquoteData noRange) xs cs t
@@ -1270,7 +1270,7 @@ instance NFData Declaration where
   rnf (Import _ a b _ c)      = rnf a `seq` rnf b `seq` rnf c
   rnf (ModuleMacro _ a b c _ d)
                               = rnf a `seq` rnf b `seq` rnf c `seq` rnf d
-  rnf (Module _ a b c d)      = rnf a `seq` rnf b `seq` rnf c `seq` rnf d
+  rnf (Module _ a b c d _)    = rnf a `seq` rnf b `seq` rnf c `seq` rnf d
   rnf (UnquoteDecl _ a b)     = rnf a `seq` rnf b
   rnf (UnquoteDef _ a b)      = rnf a `seq` rnf b
   rnf (UnquoteData _ a b c)   = rnf a `seq` rnf b `seq` rnf c

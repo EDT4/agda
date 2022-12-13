@@ -245,7 +245,7 @@ instance ExprLike Declaration where
      e@Import{}                -> e
      ModuleMacro r e n es op dir
                                -> ModuleMacro r e n (mapE es) op dir
-     Module r e n tel ds       -> Module r e n (mapE tel)              $ mapE ds
+     Module r e n tel ds op    -> Module r e n (mapE tel) (mapE ds) op
      UnquoteDecl r x e         -> UnquoteDecl r x (mapE e)
      UnquoteDef r x e          -> UnquoteDef r x (mapE e)
      UnquoteData r x xs e      -> UnquoteData r x xs (mapE e)

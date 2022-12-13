@@ -364,7 +364,7 @@ instance Pretty RHS where
 
 instance Pretty WhereClause where
   pretty  NoWhere = empty
-  pretty (AnyWhere _ [Module _ NotErased{} x [] ds])
+  pretty (AnyWhere _ [Module _ NotErased{} x [] ds _])
     | isNoName (unqualify x)
                        = vcat [ "where", nest 2 (vcat $ map pretty ds) ]
   pretty (AnyWhere _ ds) = vcat [ "where", nest 2 (vcat $ map pretty ds) ]
@@ -495,8 +495,9 @@ instance Pretty Declaration where
     Postulate _ ds  -> namedBlock "postulate" ds
     Primitive _ ds  -> namedBlock "primitive" ds
     Generalize _ ds -> namedBlock "variable" ds
-    Module _ erased x tel ds ->
-      hsep [ "module"
+    Module _ erased x tel ds open ->
+      hsep [ pretty open
+           , "module"
            , prettyErased erased (pretty x)
            , fcat (map pretty tel)
            , "where"
