@@ -128,6 +128,7 @@ import Agda.Utils.Impossible
     'let'                     { TokKeyword KwLet $$ }
     'macro'                   { TokKeyword KwMacro $$ }
     'module'                  { TokKeyword KwModule $$ }
+    'section'                 { TokKeyword KwSection $$ }
     'interleaved'             { TokKeyword KwInterleaved $$ }
     'mutual'                  { TokKeyword KwMutual $$ }
     'no-eta-equality'         { TokKeyword KwNoEta $$ }
@@ -270,6 +271,7 @@ Token
     | 'record'                  { TokKeyword KwRecord $1 }
     | 'renaming'                { TokKeyword KwRenaming $1 }
     | 'rewrite'                 { TokKeyword KwRewrite $1 }
+    | 'section'                 { TokKeyword KwSection $1 }
     | 'syntax'                  { TokKeyword KwSyntax $1 }
     | 'tactic'                  { TokKeyword KwTactic $1 }
     | 'to'                      { TokKeyword KwTo $1 }
@@ -1155,6 +1157,7 @@ Declaration
     | Open            { $1 }
     | ModuleMacro     { singleton $1 }
     | Module          { singleton $1 }
+    | Section         { singleton $1 }
     | Pragma          { singleton $1 }
     | Syntax          { singleton $1 }
     | PatternSyn      { singleton $1 }
@@ -1557,6 +1560,15 @@ Module
     {% onlyErased $3 >>= \erased ->
        return $ Module (getRange ($1,$2,$3,$4,$5,$6,$7,$8)) erased
                   $4 (map addType $5) DoOpen $6 $8 }
+
+-- Section
+Section :: { Declaration }
+Section
+  : 'section' Attributes TypedUntypedBindings 'where'
+      Declarations0
+    {% onlyErased $2 >>= \erased ->
+       return $ Module (getRange ($1,$2,$3,$4,$5)) erased
+                  (QName(noName noRange)) (map addType $3) DoOpen (defaultImportDir { publicOpen = Just noRange }) $5 }
 
 TopLevel :: { [Declaration] }
 TopLevel : TopDeclarations { figureOutTopLevelModule $1 }
