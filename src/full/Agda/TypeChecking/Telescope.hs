@@ -640,11 +640,16 @@ getOutputTypeName t = do
     case v of
       -- Possible base types:
       Def n _  -> return (tel , OutputTypeName n)
-      Sort s   -> do -- TODO: NoOutputTypeName is not used anymore. Remove?
+      Sort s   -> do
+        -- TODO: After this change, NoOutputTypeName is not used anymore. Remove?
         sk <- sortKit
         return (tel , OutputTypeName (fromMaybe __IMPOSSIBLE__ (getSortName sk s)))
       Var n _  -> return (tel , OutputTypeVar)
-      Pi{}     -> return (tel , OutputTypeVisiblePi)
+      Pi{}     -> do
+        -- TODO: After this change, OutputTypeVisiblePi is not used anymore. Remove?
+        -- TODO: Just a temporary hack. primLevelZero is just a randomly chosen name that was available and should not clash with other stuff. How do we create an unique name (if this hack (binding the function type to a name) is the way to go)?
+        name <- getPrimName <$> primLevelZero
+        return (tel , OutputTypeName name)
       -- Not base types:
       Con{}    -> __IMPOSSIBLE__
       Lam{}    -> __IMPOSSIBLE__

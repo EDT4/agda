@@ -317,6 +317,8 @@ findInstance' m cands = ifM (isFrozen m) (do
 
 insidePi :: Type -> (Type -> TCM a) -> TCM a
 insidePi t ret = reduce (unEl t) >>= \case
+    Pi a b | getHiding a == NotHidden
+               -> ret t
     Pi a b     -> addContext (absName b, a) $ insidePi (absBody b) ret
     Def{}      -> ret t
     Var{}      -> ret t
