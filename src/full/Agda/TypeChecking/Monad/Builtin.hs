@@ -532,6 +532,13 @@ infallibleSortKit = do
         IsStrict  -> ssetomega
     }
 
+getSortName :: SortKit -> I.Sort -> Maybe QName
+getSortName k (Type _)    = Just (nameOfSet k)
+getSortName k (Prop _)    = Just (nameOfProp k)
+getSortName k (Inf fib _) = Just (nameOfSetOmega k fib)
+getSortName k (SSet _)    = Just (nameOfSSet k)
+getSortName k _           = Nothing
+
 ------------------------------------------------------------------------
 -- * Path equality
 ------------------------------------------------------------------------

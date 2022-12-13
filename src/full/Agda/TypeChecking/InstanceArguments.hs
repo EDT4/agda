@@ -320,7 +320,7 @@ insidePi t ret = reduce (unEl t) >>= \case
     Pi a b     -> addContext (absName b, a) $ insidePi (absBody b) ret
     Def{}      -> ret t
     Var{}      -> ret t
-    Sort{}     -> __IMPOSSIBLE__
+    Sort{}     -> ret t
     Con{}      -> __IMPOSSIBLE__
     Lam{}      -> __IMPOSSIBLE__
     Lit{}      -> __IMPOSSIBLE__

@@ -640,7 +640,9 @@ getOutputTypeName t = do
     case v of
       -- Possible base types:
       Def n _  -> return (tel , OutputTypeName n)
-      Sort{}   -> return (tel , NoOutputTypeName)
+      Sort s   -> do -- TODO: NoOutputTypeName is not used anymore. Remove?
+        sk <- sortKit
+        return (tel , OutputTypeName (fromMaybe __IMPOSSIBLE__ (getSortName sk s)))
       Var n _  -> return (tel , OutputTypeVar)
       Pi{}     -> return (tel , OutputTypeVisiblePi)
       -- Not base types:
