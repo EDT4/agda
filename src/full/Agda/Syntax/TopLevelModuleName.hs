@@ -128,7 +128,7 @@ rawTopLevelModuleNameForModule :: C.Module -> RawTopLevelModuleName
 rawTopLevelModuleNameForModule (C.Mod _ []) = __IMPOSSIBLE__
 rawTopLevelModuleNameForModule (C.Mod _ ds) =
   case C.spanAllowedBeforeModule ds of
-    (_, C.Module _ _ n _ _ _ : _) -> rawTopLevelModuleNameForQName n
+    (_, C.Module _ _ n _ _ _ _ : _) -> rawTopLevelModuleNameForQName n
     _                           -> __IMPOSSIBLE__
 
 ------------------------------------------------------------------------

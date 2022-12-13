@@ -481,8 +481,8 @@ niceDeclarations fixs ds = do
         Primitive r []  -> justWarning $ EmptyPrimitive r
         Primitive _ ds' -> (,ds) <$> (map toPrim <$> niceAxioms PrimitiveBlock ds')
 
-        Module r erased x tel ds' op -> return $
-          ([NiceModule r PublicAccess ConcreteDef erased x tel ds' op], ds)
+        Module r erased x tel op is ds' -> return $
+          ([NiceModule r PublicAccess ConcreteDef erased x tel op is ds'], ds)
 
         ModuleMacro r erased x modapp op is -> return $
           ([NiceModuleMacro r PublicAccess erased x modapp op is], ds)
@@ -1378,7 +1378,7 @@ instance MakePrivate NiceDeclaration where
       PrimitiveFunction r p a x e              -> (\ p -> PrimitiveFunction r p a x e)          <$> mkPrivate o p
       NiceMutual r tc cc pc ds                 -> (\ ds-> NiceMutual r tc cc pc ds)             <$> mkPrivate o ds
       NiceLoneConstructor r ds                 -> NiceLoneConstructor r                         <$> mkPrivate o ds
-      NiceModule r p a e x tel ds op           -> (\ p -> NiceModule r p a e x tel ds op)       <$> mkPrivate o p
+      NiceModule r p a e x tel op is ds        -> (\ p -> NiceModule r p a e x tel op is ds)    <$> mkPrivate o p
       NiceModuleMacro r p e x ma op is         -> (\ p -> NiceModuleMacro r p e x ma op is)     <$> mkPrivate o p
       FunSig r p a i m rel tc cc x e           -> (\ p -> FunSig r p a i m rel tc cc x e)       <$> mkPrivate o p
       NiceRecSig r er p a pc uc x ls t         -> (\ p -> NiceRecSig r er p a pc uc x ls t)     <$> mkPrivate o p
@@ -1429,7 +1429,8 @@ notSoNiceDeclarations = \case
     PrimitiveFunction r _ _ x e    -> [Primitive r [TypeSig (argInfo e) Nothing x (unArg e)]]
     NiceMutual r _ _ _ ds          -> [Mutual r $ concatMap notSoNiceDeclarations ds]
     NiceLoneConstructor r ds       -> [LoneConstructor r $ concatMap notSoNiceDeclarations ds]
-    NiceModule r _ _ e x tel ds o  -> [Module r e x tel ds o]
+    NiceModule r _ _ e x tel o i ds
+                                   -> [Module r e x tel o i ds]
     NiceModuleMacro r _ e x ma o dir
                                    -> [ModuleMacro r e x ma o dir]
     NiceOpen r x dir               -> [Open r x dir]
@@ -1459,7 +1460,7 @@ niceHasAbstract = \case
     PrimitiveFunction _ _ a _ _   -> Just a
     NiceMutual{}                  -> Nothing
     NiceLoneConstructor{}         -> Nothing
-    NiceModule _ _ a _ _ _ _ _    -> Just a
+    NiceModule _ _ a _ _ _ _ _ _  -> Just a
     NiceModuleMacro{}             -> Nothing
     NiceOpen{}                    -> Nothing
     NiceImport{}                  -> Nothing

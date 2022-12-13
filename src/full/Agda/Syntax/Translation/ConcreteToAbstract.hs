@@ -1122,10 +1122,11 @@ scopeCheckNiceModule
   -> C.Name
   -> C.Telescope
   -> C.OpenShortHand
+  -> C.ImportDirective
   -> ScopeM [A.Declaration]
   -> ScopeM A.Declaration
        -- ^ The returned declaration is an 'A.Section'.
-scopeCheckNiceModule r p e name tel open checkDs
+scopeCheckNiceModule r p e name tel open dir checkDs
   | telHasOpenStmsOrModuleMacros tel = do
       -- Andreas, 2013-12-10:
       -- If the module telescope contains open statements
@@ -1135,7 +1136,7 @@ scopeCheckNiceModule r p e name tel open checkDs
       -- identifiers in the parent scope of the current module.
       -- But open statements in the module telescope should
       -- only affect the current module!
-      scopeCheckNiceModule noRange p e noName_ [] DoOpen $ singleton <$>
+      scopeCheckNiceModule noRange p e noName_ [] DoOpen (defaultImportDir { publicOpen = Just noRange }) $ singleton <$>
         scopeCheckNiceModule_ PublicAccess  -- See #4350
 
   | otherwise = do
@@ -1146,7 +1147,6 @@ scopeCheckNiceModule r p e name tel open checkDs
     scopeCheckNiceModule_ p = do
 
       -- Check whether we are dealing with an anonymous module.
-      -- This corresponds to a Coq/LEGO section.
       (name, p') <- do
         if isNoName name then do
           (i :: NameId) <- fresh
@@ -1160,12 +1160,10 @@ scopeCheckNiceModule r p e name tel open checkDs
         scopeCheckModule r e (C.QName name) aname tel checkDs
       bindModule p' name aname
 
-      -- If the module was anonymous open it public
-      -- unless it's private, in which case we just open it (#2099)
+      -- Check whether the module should be opened.
       when (open == DoOpen) $
        void $ -- We can discard the returned default A.ImportDirective.
-        openModule TopOpenModule (Just aname) (C.QName name) $
-          defaultImportDir { publicOpen = boolToMaybe (p == PublicAccess) noRange }
+        openModule TopOpenModule (Just aname) (C.QName name) dir
       return d
 
 -- | Check whether a telescope has open declarations or module macros.
@@ -1299,7 +1297,7 @@ instance ToAbstract (TopLevel [C.Declaration]) where
           genericError $ "No declarations allowed after top-level module."
 
         -- Otherwise, proceed.
-        (outsideDecls, [ C.Module r e m0 tel insideDecls _ ]) -> do
+        (outsideDecls, [ C.Module r e m0 tel _ _ insideDecls ]) -> do
           -- If the module name is _ compute the name from the file path
           (m, top) <- if isNoName m0
                 then do
@@ -1312,7 +1310,7 @@ instance ToAbstract (TopLevel [C.Declaration]) where
                   -- If the first module of the insideDecls has the same name as the file,
                   -- report an error.
                   case flip span insideDecls $ \case { C.Module{} -> False; _ -> True } of
-                    (ds0, (C.Module _ _ m1 _ _ _ : _))
+                    (ds0, (C.Module _ _ m1 _ _ _ _ : _))
                        | rawTopLevelModuleNameForQName m1 ==
                          rawTopLevelModuleName expectedMName
                          -- If the anonymous module comes from the user,
@@ -1914,14 +1912,14 @@ instance ToAbstract NiceDeclaration where
         let dir' = RecordDirectives ind eta pat cm'
         return [ A.RecDef (mkDefInfoInstance x f PublicAccess a inst NotMacroDef r) x' uc dir' params contel afields ]
 
-    NiceModule r p a e x@(C.QName name) tel ds o -> do
+    NiceModule r p a e x@(C.QName name) tel open dir ds -> do
       reportSDoc "scope.decl" 70 $ vcat $
         [ text $ "scope checking NiceModule " ++ prettyShow x
         ]
 
       adecl <- traceCall (ScopeCheckDeclaration $
-                          NiceModule r p a e x tel [] o) $ do
-        scopeCheckNiceModule r p e name tel o $
+                          NiceModule r p a e x tel open dir []) $ do
+        scopeCheckNiceModule r p e name tel open dir $
           toAbstract (Declarations ds)
 
       reportSDoc "scope.decl" 70 $ vcat $
@@ -1930,7 +1928,7 @@ instance ToAbstract NiceDeclaration where
         ]
       return [ adecl ]
 
-    NiceModule _ _ _ _ m@C.Qual{} _ _ _ ->
+    NiceModule _ _ _ _ m@C.Qual{} _ _ _ _ ->
       genericError $ "Local modules cannot have qualified names"
 
     NiceModuleMacro r p e x modapp open dir -> do
@@ -2644,7 +2642,8 @@ terminationPragmas (C.Private  _ _      ds) = concatMap terminationPragmas ds
 terminationPragmas (C.Abstract _        ds) = concatMap terminationPragmas ds
 terminationPragmas (C.InstanceB _       ds) = concatMap terminationPragmas ds
 terminationPragmas (C.Mutual _          ds) = concatMap terminationPragmas ds
-terminationPragmas (C.Module _ _ _ _    ds _) = concatMap terminationPragmas ds
+terminationPragmas (C.Module _ _ _ _ _ _
+                                        ds) = concatMap terminationPragmas ds
 terminationPragmas (C.Macro _           ds) = concatMap terminationPragmas ds
 terminationPragmas (C.Record _ _ _ _ _ _
                                         ds) = concatMap terminationPragmas ds
