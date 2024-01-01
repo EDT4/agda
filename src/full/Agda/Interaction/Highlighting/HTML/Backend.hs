@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wunused-imports #-}
 
 -- | Backend for generating highlighted, hyperlinked HTML from Agda sources.
 
@@ -22,7 +23,7 @@ import Agda.Interaction.Options
     , OptDescr(..)
     , Flag
     )
-import Agda.Compiler.Backend (Backend(..), Backend'(..), Recompile(..))
+import Agda.Compiler.Backend (Backend,Backend_boot(..), Backend',Backend'_boot(..), Recompile(..))
 import Agda.Compiler.Common (IsMain(..), curIF)
 
 import Agda.Syntax.TopLevelModuleName (TopLevelModuleName)

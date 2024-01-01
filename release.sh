@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 set -ue
 PATH=./.cabal-sandbox/bin${PATH:+:$PATH}
@@ -8,10 +8,10 @@ ChoicesQuestion() {
     shift; shift; shift
     while true; do
         {   echo -n "$question ["
-            [ "$default" = "$first" ] && echo -n "$first" | tr 'a-z' 'A-Z' || echo -n "$first"
+            [ "$default" = "$first" ] && echo -n "$first" | tr '[:lower:]' '[:upper:]' || echo -n "$first"
             for c in "$@"; do
                 echo -n '/'
-                [ "$default" = "$c" ] && echo -n "$c" | tr 'a-z' 'A-Z' || echo -n "$c"
+                [ "$default" = "$c" ] && echo -n "$c" | tr '[:lower:]' '[:upper:]' || echo -n "$c"
             done
             echo -n '] '
             read -r ans;
@@ -27,7 +27,8 @@ ChoicesQuestion() {
     done
 }
 YesNoQuestion() {
-    local r=$(ChoicesQuestion "$1" "${2:-y}" y n)
+    local r
+    r=$(ChoicesQuestion "$1" "${2:-y}" y n)
     [ "$r" = y ]
 }
 
@@ -56,6 +57,9 @@ updateVersion() {
     # Update the version number in the elisp file
     sed -ri "s/(\(\s*defvar\s+agda2-version\s+)\"[0-9.]+\"/\1\"$version\"/" \
         src/data/emacs-mode/agda2-mode.el
+
+    # Update the tag in the deployment workflow
+    sed -ri "s/--notes-start-tag v[0-9.]+/--notes-start-tag v$version/" deploy.yml
 
     sed -ri "s/^(VERSION\s+=\s+).*/\1$version/" mk/paths.mk
 

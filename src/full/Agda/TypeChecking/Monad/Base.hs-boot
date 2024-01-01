@@ -6,10 +6,10 @@ import Control.Monad.IO.Class (MonadIO)
 import Data.IORef (IORef)
 import Data.Map (Map)
 
-import Agda.Syntax.Common (Nat)
 import Agda.Syntax.TopLevelModuleName (TopLevelModuleName)
 import Agda.Utils.FileName (AbsolutePath)
 
+data Definition
 data Warning
 
 data TCErr
@@ -49,4 +49,4 @@ type BackendName = String
 
 data Comparison
 data Polarity
-data IPBoundary' a
+data IPFace' a

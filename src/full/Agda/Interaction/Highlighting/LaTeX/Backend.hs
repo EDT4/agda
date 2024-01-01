@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wunused-imports #-}
 
 module Agda.Interaction.Highlighting.LaTeX.Backend
   ( latexBackend
@@ -24,13 +25,13 @@ import GHC.Generics (Generic)
 
 import System.FilePath ( (</>) )
 
-import Agda.Compiler.Backend (Backend(..), Backend'(..), Definition, Recompile(..))
+import Agda.Compiler.Backend (Backend,Backend_boot(..), Backend',Backend'_boot(..), Definition, Recompile(..))
 import Agda.Compiler.Common (curIF, IsMain(IsMain, NotMain))
 
 import Agda.Interaction.Options
   ( ArgDescr(NoArg, ReqArg)
   , CommandLineOptions ( optGHCiInteraction, optPragmaOptions )
-  , PragmaOptions ( optCountClusters )
+  , optCountClusters
   , Flag
   , OptDescr(..)
   )
