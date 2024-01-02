@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wunused-imports #-}
+
 -- | Sanity checking for internal syntax. Mostly checking variable scoping.
 module Agda.Syntax.Internal.SanityCheck where
 
@@ -9,7 +11,7 @@ import Agda.TypeChecking.Free
 import Agda.TypeChecking.Monad
 
 import Agda.Utils.List ( dropEnd, initWithDefault )
-import Agda.Utils.Pretty
+import Agda.Syntax.Common.Pretty
 import Agda.Utils.Size
 import Agda.Utils.Impossible
 
@@ -19,7 +21,7 @@ sanityCheckVars tel v =
   case filter bad (Set.toList $ allFreeVars v) of
     [] -> return ()
     xs -> do
-      reportSDoc "impossible" 1 . return $
+      alwaysReportSDoc "impossible" 1 . return $
         sep [ hang "Sanity check failed for" 2
                    (hang (pretty tel <+> "|-") 2 (pretty v))
             , text $ "out of scope: " ++ show xs ]
@@ -68,7 +70,7 @@ sanityCheckSubst gamma rho delta = go gamma rho delta
     dropLastN n = telFromList . dropEnd n . telToList
 
     err reason = do
-      reportSDoc "impossible" 1 . return $
+      alwaysReportSDoc "impossible" 1 . return $
         sep [ hang "Sanity check failed for" 2 $
               hang (pretty gamma <+> "|-") 2 $
               hang (pretty rho <+> ":") 2 $
