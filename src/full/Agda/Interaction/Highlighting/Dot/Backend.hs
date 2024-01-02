@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wunused-imports #-}
 
 module Agda.Interaction.Highlighting.Dot.Backend
   ( dotBackend
@@ -26,7 +27,7 @@ import qualified Data.Text.Lazy as L
 
 import GHC.Generics (Generic)
 
-import Agda.Compiler.Backend (Backend(..), Backend'(..), Definition, Recompile(..))
+import Agda.Compiler.Backend (Backend,Backend_boot(..), Backend',Backend'_boot(..), Definition, Recompile(..))
 import Agda.Compiler.Common (curIF, IsMain)
 
 import Agda.Interaction.FindFile (findFile, srcFilePath)
@@ -40,7 +41,7 @@ import Agda.Interaction.Options
 import Agda.Syntax.TopLevelModuleName (TopLevelModuleName)
 
 import Agda.TypeChecking.Monad
-  ( Interface(iImportedModules, iModuleName)
+  ( Interface(iImportedModules)
   , MonadTCError
   , ReadTCState
   , MonadTCM(..)
@@ -53,7 +54,7 @@ import Agda.TypeChecking.Pretty
 import Agda.Utils.Graph.AdjacencyMap.Unidirectional
   (Graph, WithUniqueInt)
 import qualified Agda.Utils.Graph.AdjacencyMap.Unidirectional as Graph
-import Agda.Utils.Pretty ( prettyShow )
+import Agda.Syntax.Common.Pretty ( prettyShow )
 
 -- ------------------------------------------------------------------------
 

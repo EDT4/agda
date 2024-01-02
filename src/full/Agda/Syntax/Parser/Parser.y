@@ -62,7 +62,7 @@ import Agda.Utils.List ( spanJust, chopWhen )
 import Agda.Utils.List1 ( List1, pattern (:|), (<|) )
 import Agda.Utils.Monad
 import Agda.Utils.Null
-import Agda.Utils.Pretty hiding ((<>))
+import Agda.Syntax.Common.Pretty hiding ((<>))
 import Agda.Utils.Singleton
 import qualified Agda.Utils.Maybe.Strict as Strict
 import qualified Agda.Utils.List1 as List1
@@ -153,6 +153,8 @@ import Agda.Utils.Impossible
     'where'                   { TokKeyword KwWhere $$ }
     'do'                      { TokKeyword KwDo $$ }
     'with'                    { TokKeyword KwWith $$ }
+    'opaque'                  { TokKeyword KwOpaque $$ }
+    'unfolding'               { TokKeyword KwUnfolding $$ }
 
     'BUILTIN'                 { TokKeyword KwBUILTIN $$ }
     'CATCHALL'                { TokKeyword KwCATCHALL $$ }
@@ -259,6 +261,7 @@ Token
     | 'interleaved'             { TokKeyword KwInterleaved $1 }
     | 'mutual'                  { TokKeyword KwMutual $1 }
     | 'no-eta-equality'         { TokKeyword KwNoEta $1 }
+    | 'opaque'                  { TokKeyword KwOpaque $1 }
     | 'open'                    { TokKeyword KwOpen $1 }
     | 'overlap'                 { TokKeyword KwOverlap $1 }
     | 'pattern'                 { TokKeyword KwPatternSyn $1 }
@@ -275,6 +278,7 @@ Token
     | 'syntax'                  { TokKeyword KwSyntax $1 }
     | 'tactic'                  { TokKeyword KwTactic $1 }
     | 'to'                      { TokKeyword KwTo $1 }
+    | 'unfolding'               { TokKeyword KwUnfolding $1 }
     | 'unquote'                 { TokKeyword KwUnquote $1 }
     | 'unquoteDecl'             { TokKeyword KwUnquoteDecl $1 }
     | 'unquoteDef'              { TokKeyword KwUnquoteDef $1 }
@@ -470,7 +474,7 @@ ModalArgIds : Attributes ArgIds  {% ($1,) `fmap` mapM (applyAttrs $1) $2 }
 -- Attributes are parsed as '@' followed by an atomic expression.
 
 Attribute :: { Attr }
-Attribute : '@' ExprOrAttr  {% setRange (getRange ($1,$2)) `fmap` toAttribute $2 }
+Attribute : '@' ExprOrAttr  {% toAttribute (getRange ($1,$2)) $2 }
 
 -- Parse a reverse list of modalities
 
@@ -574,10 +578,10 @@ BIdsWithHiding : Application {%
 
 
 -- Space separated list of strings in a pragma.
-PragmaStrings :: { [String] }
+PragmaStrings :: { [(Interval, String)] }
 PragmaStrings
     : {- empty -}           { [] }
-    | string PragmaStrings  { snd $1 : $2 }
+    | string PragmaStrings  { $1 : $2 }
 {- Unused
 PragmaString :: { String }
 PragmaString
@@ -1163,15 +1167,12 @@ Declaration
     | PatternSyn      { singleton $1 }
     | UnquoteDecl     { singleton $1 }
     | Constructor     { singleton $1 }
+    | Opaque          { singleton $1 }
+    | Unfolding       { singleton $1 }
 
 {--------------------------------------------------------------------------
     Individual declarations
  --------------------------------------------------------------------------}
-
--- Type signatures of the form "n1 n2 n3 ... : Type", with at least
--- one bound name.
-TypeSigs :: { List1 Declaration }
-TypeSigs : SpaceIds ':' Expr { fmap (\ x -> typeSig defaultArgInfo Nothing x $3) $1 }
 
 -- A variant of TypeSigs where any sub-sequence of names can be marked
 -- as hidden or irrelevant using braces and dots:
@@ -1607,7 +1608,9 @@ DeclarationPragma
     -- Give better error during type checking instead.
 
 OptionsPragma :: { Pragma }
-OptionsPragma : '{-#' 'OPTIONS' PragmaStrings '#-}' { OptionsPragma (getRange ($1,$2,$4)) $3 }
+OptionsPragma :
+  '{-#' 'OPTIONS' PragmaStrings '#-}'
+  { OptionsPragma (getRange ($1, $2, map fst $3, $4)) (map snd $3) }
 
 BuiltinPragma :: { Pragma }
 BuiltinPragma
@@ -1631,7 +1634,8 @@ ForeignPragma
 CompilePragma :: { Pragma }
 CompilePragma
   : '{-#' 'COMPILE' string PragmaQName PragmaStrings '#-}'
-    { CompilePragma (getRange ($1,$2,fst $3,$4,$6)) (mkRString $3) $4 (unwords $5) }
+    { CompilePragma (getRange ($1, $2, fst $3, $4, map fst $5, $6))
+        (mkRString $3) $4 (unwords (map snd $5)) }
 
 StaticPragma :: { Pragma }
 StaticPragma
@@ -1660,9 +1664,10 @@ InjectivePragma
 
 DisplayPragma :: { Pragma }
 DisplayPragma
-  : '{-#' 'DISPLAY' string PragmaStrings '#-}' {%
-      let (r, s) = $3 in
-      parseDisplayPragma (fuseRange $1 $5) (iStart r) (unwords (s : $4)) }
+  : '{-#' 'DISPLAY' string PragmaStrings '#-}'
+    {% let (r, s) = $3 in
+       parseDisplayPragma (getRange ($1, $2, r, map fst $4, $5))
+         (iStart r) (unwords (s : map snd $4)) }
 
 EtaPragma :: { Pragma }
 EtaPragma
@@ -1703,7 +1708,8 @@ CatchallPragma
 ImpossiblePragma :: { Pragma }
 ImpossiblePragma
   : '{-#' 'IMPOSSIBLE' PragmaStrings '#-}'
-    { ImpossiblePragma (getRange ($1,$2,$4)) $3 }
+    { ImpossiblePragma (getRange ($1, $2, map fst $3, $4))
+        (map snd $3) }
 
 NoPositivityCheckPragma :: { Pragma }
 NoPositivityCheckPragma
@@ -1750,25 +1756,6 @@ Polarity : string {% polarity $1 }
 {--------------------------------------------------------------------------
     Sequences of declarations
  --------------------------------------------------------------------------}
-
--- Possibly empty list of type signatures, with several identifiers allowed
--- for every signature.
-TypeSignatures0 :: { [TypeSignature] }
-TypeSignatures
-    : vopen close    { [] }
-    | TypeSignatures { List1.toList $1 }
-
--- Non-empty list of type signatures, with several identifiers allowed
--- for every signature.
-TypeSignatures :: { List1 TypeSignature }
-TypeSignatures
-    : vopen TypeSignatures1 close   { List1.reverse $2 }
-
--- Inside the layout block.
-TypeSignatures1 :: { List1 TypeSignature }
-TypeSignatures1
-    : TypeSignatures1 semi TypeSigs { List1.reverse $3 <> $1 }
-    | TypeSigs                      { List1.reverse $1 }
 
 -- A variant of TypeSignatures which uses ArgTypeSigs instead of
 -- TypeSigs.
@@ -1837,6 +1824,17 @@ RecordInduction :: { Ranged Induction }
 RecordInduction
     : 'inductive'   { Ranged (getRange $1) Inductive   }
     | 'coinductive' { Ranged (getRange $1) CoInductive }
+
+Opaque :: { Declaration }
+  : 'opaque' Declarations0     { Opaque (getRange ($1, $2)) $2 }
+
+Unfolding :: { Declaration }
+  : 'unfolding' UnfoldingNames { Unfolding (getRange ($1, $2)) $2 }
+
+UnfoldingNames :: { [QName] }
+UnfoldingNames
+    : QId UnfoldingNames { $1:$2 }
+    | {- empty -}        { [] }
 
 -- Arbitrary declarations
 Declarations :: { List1 Declaration }
@@ -2417,7 +2415,7 @@ data RHSOrTypeSigs
 
 patternToNames :: Pattern -> Parser (List1 (ArgInfo, Name))
 patternToNames = \case
-    IdentP (QName i)         -> return $ singleton $ (defaultArgInfo, i)
+    IdentP _ (QName i)       -> return $ singleton $ (defaultArgInfo, i)
     WildP r                  -> return $ singleton $ (defaultArgInfo, C.noName r)
     DotP _ (Ident (QName i)) -> return $ singleton $ (setRelevance Irrelevant defaultArgInfo, i)
     RawAppP _ ps             -> sconcat . List2.toList1 <$> mapM patternToNames ps
@@ -2474,24 +2472,20 @@ instance SetRange Attr where
   setRange r (Attr _ x a) = Attr r x a
 
 -- | Parse an attribute.
-toAttribute :: Expr -> Parser Attr
-toAttribute x = do
-  attr <- maybe failure (return . Attr r y) $ exprToAttribute x
-  case theAttr attr of
-    CohesionAttribute{} ->
-      modify' (\s -> s { parseCohesion = (y, r) : parseCohesion s })
-    _                   -> return ()
+toAttribute :: Range -> Expr -> Parser Attr
+toAttribute r e = do
+  attr <- maybe failure (return . Attr r s) $ exprToAttribute e
+  modify' (\ st -> st{ parseAttributes = (theAttr attr, r, s) : parseAttributes st })
   return attr
   where
-  r = getRange x
-  y = prettyShow x
-  failure = parseErrorRange x $ "Unknown attribute: " ++ y
+  s = prettyShow e
+  failure = parseErrorRange e $ "Unknown attribute: " ++ s
 
 -- | Apply an attribute to thing (usually `Arg`).
 --   This will fail if one of the attributes is already set
 --   in the thing to something else than the default value.
 applyAttr :: (LensAttribute a) => Attr -> a -> Parser a
-applyAttr attr@(Attr r x a) = maybe failure return . setPristineAttribute a
+applyAttr attr@(Attr _ _ a) = maybe failure return . setPristineAttribute a
   where
   failure = errorConflictingAttribute attr
 

@@ -82,7 +82,7 @@ import Agda.TypeChecking.Telescope
 
 import Agda.Utils.List
 import Agda.Utils.Monad
-import Agda.Utils.Pretty (prettyShow)
+import Agda.Syntax.Common.Pretty (prettyShow)
 import Agda.Utils.Size
 
 import Agda.Utils.Impossible
@@ -104,6 +104,8 @@ computeForcingAnnotations c t =
     -- get to the actual data type.
     -- Also #2947: The type might reduce to a pi type.
     TelV tel (El _ a) <- telViewPath t
+    -- Jesper, 2023-09-20 (#6867): With --erasure, only arguments with @0 can be forced.
+    erasureOn <- optErasure <$> pragmaOptions
     let vs = case a of
           Def _ us -> us
           _        -> __IMPOSSIBLE__
@@ -120,7 +122,7 @@ computeForcingAnnotations c t =
         -- case it isn't really forced.
         isForced :: Modality -> Nat -> Bool
         isForced m i =
-               (hasQuantity0 m || noUserQuantity m)
+               (hasQuantity0 m || not erasureOn)
             && (getRelevance m /= Irrelevant)
             && case IntMap.lookup i xs' of
                  Nothing -> False

@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wunused-imports #-}
 
 module Agda.TypeChecking.MetaVars.Mention where
 
@@ -50,12 +51,11 @@ instance MentionsMeta Type where
 
 instance MentionsMeta Sort where
   mentionsMetas xs = \case
-    Type l     -> mentionsMetas xs l
-    Prop l     -> mentionsMetas xs l
+    Univ _ l   -> mentionsMetas xs l
     Inf _ _    -> False
-    SSet l     -> mentionsMetas xs l
     SizeUniv   -> False
     LockUniv   -> False
+    LevelUniv  -> False
     IntervalUniv -> False
     PiSort a s1 s2 -> mentionsMetas xs (a, s1, s2)
     FunSort s1 s2 -> mentionsMetas xs (s1, s2)
@@ -113,6 +113,7 @@ instance MentionsMeta Constraint where
                                   -- problem and we don't have a handle on
                                   -- what metas it depends on
     FindInstance{}      -> True   -- this needs to be woken up for any meta
+    ResolveInstanceHead q -> True -- TODO
     IsEmpty r t         -> mm t
     CheckSizeLtSat t    -> mm t
     CheckFunDef{}       -> True   -- not sure what metas this depends on

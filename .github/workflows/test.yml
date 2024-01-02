@@ -8,10 +8,10 @@
 env:
   AGDA_TESTS_OPTIONS: -j${PARALLEL_TESTS} --hide-successes
   BUILD_DIR: dist
-  GHC_VER: 9.4.3
+  GHC_VER: 9.8.1
   PARALLEL_TESTS: 2
   STACK: stack --system-ghc
-  STACK_VER: 2.9.1
+  STACK_VER: 2.13.1
   TASTY_ANSI_TRICKS: 'false'
 jobs:
   build:
@@ -22,35 +22,47 @@ jobs:
       && !contains(github.event.head_commit.message, '[skip github]')
     runs-on: ubuntu-22.04
     steps:
+    - name: Info about the context
+      run: |
+        echo "github.base_ref   = ${{ github.base_ref   }}"
+        echo "github.head_ref   = ${{ github.head_ref   }}"
+        echo "github.event_name = ${{ github.event_name }}"
+        echo "github.ref        = ${{ github.ref        }}"
+        echo "github.ref_name   = ${{ github.ref_name   }}"
+        echo "github.ref_type   = ${{ github.ref_type   }}"
     - if: github.ref != 'refs/heads/master'
-      uses: styfle/cancel-workflow-action@0.11.0
+      uses: styfle/cancel-workflow-action@0.12.0
       with:
         access_token: ${{ github.token }}
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         submodules: recursive
-    - uses: haskell/actions/setup@v2
+    - uses: haskell-actions/setup@v2
       with:
         enable-stack: true
         ghc-version: ${{ env.GHC_VER }}
         stack-version: ${{ env.STACK_VER }}
     - name: Copy stack-${{ env.GHC_VER}}.yaml to stack.yaml
       run: cp stack-${{ env.GHC_VER }}.yaml stack.yaml
+    - name: Determine the ICU version
+      run: |
+        ICU_VER=$(pkg-config --modversion icu-i18n)
+        echo "ICU_VER=${ICU_VER}"
+        echo "ICU_VER=${ICU_VER}" >> "${GITHUB_ENV}"
     - id: cache
-      name: Cache dependencies
+      name: Restore cache from approximate key
       uses: actions/cache@v3
       with:
-        key: ${{ runner.os }}-stack-${{ env.STACK_VER }}-ghc-${{ env.GHC_VER }}-${{
-          hashFiles('stack.yaml', 'Agda.cabal') }}
-        path: ~/.stack
+        key: test.yml-ghc-${{ env.GHC_VER }}-stack-${{ env.STACK_VER }}-icu-${{ env.ICU_VER
+          }}-plan-${{ hashFiles('Agda.cabal','stack.yaml') }}
+        path: |
+          ~/.stack
+        restore-keys: test.yml-ghc-${{ env.GHC_VER }}-stack-${{ env.STACK_VER }}-icu-${{
+          env.ICU_VER }}-
     - name: Install dependencies for Agda and its test suites
       run: make install-deps
     - name: Build Agda
-      run: make BUILD_DIR="${BUILD_DIR}" install-bin
-    - name: Run tests for the size solver
-      run: |
-        export PATH=${HOME}/.local/bin:${PATH}
-        make BUILD_DIR="${GITHUB_WORKSPACE}/${BUILD_DIR}" size-solver-test
+      run: make BUILD_DIR="${BUILD_DIR}" install-bin-debug
     - name: Pack artifacts
       run: |
         strip ${BUILD_DIR}/build/agda-tests/agda-tests \
@@ -76,10 +88,10 @@ jobs:
     needs: build
     runs-on: ubuntu-22.04
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         submodules: recursive
-    - uses: haskell/actions/setup@v2
+    - uses: haskell-actions/setup@v2
       with:
         enable-stack: true
         ghc-version: ${{ env.GHC_VER }}
@@ -91,13 +103,19 @@ jobs:
       run: |
         tar --use-compress-program zstd -xvf dist.tzst
         tar --use-compress-program zstd -xvf stack-work.tzst
+    - name: Determine the ICU version
+      run: |
+        ICU_VER=$(pkg-config --modversion icu-i18n)
+        echo "ICU_VER=${ICU_VER}"
+        echo "ICU_VER=${ICU_VER}" >> "${GITHUB_ENV}"
     - id: cache
-      name: Cache dependencies
-      uses: actions/cache@v3
+      name: Restore cache from exact key
+      uses: actions/cache/restore@v3
       with:
-        key: ${{ runner.os }}-stack-${{ env.STACK_VER }}-ghc-${{ env.GHC_VER }}-${{
-          hashFiles('stack.yaml', 'Agda.cabal') }}
-        path: ~/.stack
+        key: test.yml-ghc-${{ env.GHC_VER }}-stack-${{ env.STACK_VER }}-icu-${{ env.ICU_VER
+          }}-plan-${{ hashFiles('Agda.cabal','stack.yaml') }}
+        path: |
+          ~/.stack
     - name: Cubical library test
       run: make BUILD_DIR="${GITHUB_WORKSPACE}/${BUILD_DIR}" cubical-test
     - name: Successful tests using the cubical library
@@ -106,10 +124,10 @@ jobs:
     needs: build
     runs-on: ubuntu-22.04
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         submodules: recursive
-    - uses: haskell/actions/setup@v2
+    - uses: haskell-actions/setup@v2
       with:
         enable-stack: true
         ghc-version: ${{ env.GHC_VER }}
@@ -121,13 +139,19 @@ jobs:
       run: |
         tar --use-compress-program zstd -xvf dist.tzst
         tar --use-compress-program zstd -xvf stack-work.tzst
+    - name: Determine the ICU version
+      run: |
+        ICU_VER=$(pkg-config --modversion icu-i18n)
+        echo "ICU_VER=${ICU_VER}"
+        echo "ICU_VER=${ICU_VER}" >> "${GITHUB_ENV}"
     - id: cache
-      name: Cache dependencies
-      uses: actions/cache@v3
+      name: Restore cache from exact key
+      uses: actions/cache/restore@v3
       with:
-        key: ${{ runner.os }}-stack-${{ env.STACK_VER }}-ghc-${{ env.GHC_VER }}-${{
-          hashFiles('stack.yaml', 'Agda.cabal') }}
-        path: ~/.stack
+        key: test.yml-ghc-${{ env.GHC_VER }}-stack-${{ env.STACK_VER }}-icu-${{ env.ICU_VER
+          }}-plan-${{ hashFiles('Agda.cabal','stack.yaml') }}
+        path: |
+          ~/.stack
     - name: Install Tex Live and Emacs
       run: |
         sudo apt-get update
@@ -135,18 +159,29 @@ jobs:
         sudo apt-get install emacs-nox ${APT_GET_OPTS}
     - name: Suite of tests for the LaTeX and HTML backends
       run: make BUILD_DIR="${GITHUB_WORKSPACE}/${BUILD_DIR}" DONT_RUN_LATEX=Y latex-html-test
-    - name: Testing the Emacs mode
+    - if: always()
+      name: Testing the Emacs mode
       run: make BUILD_DIR="${GITHUB_WORKSPACE}/${BUILD_DIR}" testing-emacs-mode
-    - name: Suite of interaction tests
+    - if: always()
+      name: User manual (test)
+      run: make BUILD_DIR="${GITHUB_WORKSPACE}/${BUILD_DIR}" user-manual-test
+    - if: always()
+      name: User manual covers all options
+      run: make BUILD_DIR="${GITHUB_WORKSPACE}/${BUILD_DIR}" user-manual-covers-options
+    - if: always()
+      name: User manual covers all warnings
+      run: make BUILD_DIR="${GITHUB_WORKSPACE}/${BUILD_DIR}" user-manual-covers-warnings
+    - if: always()
+      name: Suite of interaction tests
       run: make BUILD_DIR="${GITHUB_WORKSPACE}/${BUILD_DIR}" interaction
   stdlib-test:
     needs: build
     runs-on: ubuntu-22.04
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         submodules: recursive
-    - uses: haskell/actions/setup@v2
+    - uses: haskell-actions/setup@v2
       with:
         enable-stack: true
         ghc-version: ${{ env.GHC_VER }}
@@ -158,19 +193,30 @@ jobs:
       run: |
         tar --use-compress-program zstd -xvf dist.tzst
         tar --use-compress-program zstd -xvf stack-work.tzst
+    - name: Determine the ICU version
+      run: |
+        ICU_VER=$(pkg-config --modversion icu-i18n)
+        echo "ICU_VER=${ICU_VER}"
+        echo "ICU_VER=${ICU_VER}" >> "${GITHUB_ENV}"
     - id: cache
-      name: Cache dependencies
-      uses: actions/cache@v3
+      name: Restore cache from exact key
+      uses: actions/cache/restore@v3
       with:
-        key: ${{ runner.os }}-stack-${{ env.STACK_VER }}-ghc-${{ env.GHC_VER }}-${{
-          hashFiles('stack.yaml', 'Agda.cabal') }}
-        path: ~/.stack
+        key: test.yml-ghc-${{ env.GHC_VER }}-stack-${{ env.STACK_VER }}-icu-${{ env.ICU_VER
+          }}-plan-${{ hashFiles('Agda.cabal','stack.yaml') }}
+        path: |
+          ~/.stack
     - name: Standard library test
       run: |
         # ASR (2021-01-17). `cabal update` is required due to #5138.
         # We should also use `stack` in this test.
         cabal update
         make BUILD_DIR="${GITHUB_WORKSPACE}/${BUILD_DIR}" std-lib-test
+    - if: always()
+      name: Benchmark
+      run: |
+        make BUILD_DIR="${GITHUB_WORKSPACE}/${BUILD_DIR}" benchmark-without-logs
+        make BUILD_DIR="${GITHUB_WORKSPACE}/${BUILD_DIR}" benchmark-summary
     - name: Standard library compiler tests
       run: make BUILD_DIR="${GITHUB_WORKSPACE}/${BUILD_DIR}" std-lib-compiler-test
     - name: Successful tests using the standard library
@@ -181,10 +227,10 @@ jobs:
     needs: build
     runs-on: ubuntu-22.04
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         submodules: recursive
-    - uses: haskell/actions/setup@v2
+    - uses: haskell-actions/setup@v2
       with:
         enable-stack: true
         ghc-version: ${{ env.GHC_VER }}
@@ -196,36 +242,44 @@ jobs:
       run: |
         tar --use-compress-program zstd -xvf dist.tzst
         tar --use-compress-program zstd -xvf stack-work.tzst
+    - name: Determine the ICU version
+      run: |
+        ICU_VER=$(pkg-config --modversion icu-i18n)
+        echo "ICU_VER=${ICU_VER}"
+        echo "ICU_VER=${ICU_VER}" >> "${GITHUB_ENV}"
     - id: cache
-      name: Cache dependencies
-      uses: actions/cache@v3
+      name: Restore cache from exact key
+      uses: actions/cache/restore@v3
       with:
-        key: ${{ runner.os }}-stack-${{ env.STACK_VER }}-ghc-${{ env.GHC_VER }}-${{
-          hashFiles('stack.yaml', 'Agda.cabal') }}
-        path: ~/.stack
+        key: test.yml-ghc-${{ env.GHC_VER }}-stack-${{ env.STACK_VER }}-icu-${{ env.ICU_VER
+          }}-plan-${{ hashFiles('Agda.cabal','stack.yaml') }}
+        path: |
+          ~/.stack
     - name: Suite of tests for bugs
       run: make BUILD_DIR="${GITHUB_WORKSPACE}/${BUILD_DIR}" bugs
-    - name: 'Suite of successful tests: mini-library Common'
+    - if: always()
+      name: 'Suite of successful tests: mini-library Common'
       run: make BUILD_DIR="${GITHUB_WORKSPACE}/${BUILD_DIR}" common
-    - name: Suite of successful tests
+    - if: always()
+      name: Suite of successful tests
       run: make BUILD_DIR="${GITHUB_WORKSPACE}/${BUILD_DIR}" succeed
-    - name: Suite of failing tests
+    - if: always()
+      name: Suite of failing tests
       run: make BUILD_DIR="${GITHUB_WORKSPACE}/${BUILD_DIR}" fail
-    - name: User manual (test)
-      run: make BUILD_DIR="${GITHUB_WORKSPACE}/${BUILD_DIR}" user-manual-test
-    - name: Suite of examples
+    - if: always()
+      name: Suite of examples
       run: make BUILD_DIR="${GITHUB_WORKSPACE}/${BUILD_DIR}" examples
-    - name: Suite of interactive tests
+    - if: always()
+      name: Suite of interactive tests
       run: make BUILD_DIR="${GITHUB_WORKSPACE}/${BUILD_DIR}" interactive
-    - name: Successful tests using Agda as a Haskell library
+    - if: always()
+      name: Successful tests using Agda as a Haskell library
       run: make BUILD_DIR="${GITHUB_WORKSPACE}/${BUILD_DIR}" api-test
-    - name: Internal test suite
+    - if: always()
+      name: Internal test suite
       run: make BUILD_DIR="${GITHUB_WORKSPACE}/${BUILD_DIR}" internal-tests
-    - name: Benchmark
-      run: |
-        make BUILD_DIR="${GITHUB_WORKSPACE}/${BUILD_DIR}" benchmark-without-logs
-        make BUILD_DIR="${GITHUB_WORKSPACE}/${BUILD_DIR}" benchmark-summary
-    - name: Compiler tests
+    - if: always()
+      name: Compiler tests
       run: make BUILD_DIR="${GITHUB_WORKSPACE}/${BUILD_DIR}" compiler-test
 name: Build, Test, and Benchmark
 'on':
@@ -236,6 +290,8 @@ name: Build, Test, and Benchmark
     - .github/workflows/test.yml
     - '!src/github/**'
     - src/github/workflows/test.yml
+    - '!doc/**'
+    - doc/user-manual/**/*.lagda.rst
     - '!src/agda-bisect/**'
     - '!src/fix-whitespace/**'
     - '!src/hs-tags/**'
@@ -246,6 +302,7 @@ name: Build, Test, and Benchmark
     - '!.mailmap'
     - '!.gitignore'
     - '!.hlint.yaml'
+    - '!.readthedocs.yaml'
     - '!.travis.yml'
     - '!CHANGELOG.md'
     - '!HACKING.md'
@@ -266,6 +323,8 @@ name: Build, Test, and Benchmark
     - .github/workflows/test.yml
     - '!src/github/**'
     - src/github/workflows/test.yml
+    - '!doc/**'
+    - doc/user-manual/**/*.lagda.rst
     - '!src/agda-bisect/**'
     - '!src/fix-whitespace/**'
     - '!src/hs-tags/**'
@@ -276,6 +335,7 @@ name: Build, Test, and Benchmark
     - '!.mailmap'
     - '!.gitignore'
     - '!.hlint.yaml'
+    - '!.readthedocs.yaml'
     - '!.travis.yml'
     - '!CHANGELOG.md'
     - '!HACKING.md'
