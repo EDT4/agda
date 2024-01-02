@@ -1,7 +1,7 @@
 ..
   ::
 
-  {-# OPTIONS --cubical #-}
+  {-# OPTIONS --cubical --erasure #-}
 
   module language.runtime-irrelevance where
 
@@ -29,6 +29,7 @@ Syntax
 ======
 
 A function or constructor argument is declared erased using the ``@0`` or ``@erased`` annotation.
+(These annotations may only be used if the option :option:`--erasure` is active.)
 For example, the following definition of vectors guarantees that the length argument to ``_∷_`` is not
 present at runtime::
 
@@ -45,11 +46,11 @@ arguments.
   ensures that it is erased without relying on the analysis.
 
 .. note::
-  In the type signature of a constructor or record field the
-  parameters are always marked as erased, even if the parameters are
-  not marked as erased in the data or record type's telescope, with
-  one exception: for indexed data types this only happens if the
-  :option:`--with-K` flag is active.
+  If :option:`--erasure` is used, then parameters are marked as erased
+  in the type signatures of constructors and record fields, even if
+  the parameters are not marked as erased in the data or record type's
+  telescope, with one exception: for indexed data types this only
+  happens if the :option:`--with-K` flag is active.
 
 Erasure annotations can also appear in function arguments (both first-order and higher-order). For instance, here is
 an implementation of ``foldl`` on vectors::
@@ -201,8 +202,12 @@ following restrictions apply:
 
 - Cannot use erased variables or definitions.
 - Cannot pattern match on erased arguments, unless there is at most
-  one valid case. If :option:`--without-K` is enabled and there is one valid
-  case, then the datatype must also not be indexed.
+  one valid case. If :option:`--without-K` is enabled and there is one
+  valid case, then there are further restrictions:
+
+  - The constructor's data or record type must not be indexed.
+  - If the type is anything but a record type with η-equality, then
+    the option :option:`--erased-matches` must be enabled.
 
 Consider the function ``foo`` taking an erased vector argument:
 

@@ -54,7 +54,7 @@ import Agda.Utils.List  ( stripSuffix, nubOn )
 import Agda.Utils.List1 ( List1, pattern (:|) )
 import qualified Agda.Utils.List1 as List1
 import Agda.Utils.Monad ( ifM, unlessM )
-import Agda.Utils.Pretty ( Pretty(..), prettyShow )
+import Agda.Syntax.Common.Pretty ( Pretty(..), prettyShow )
 import Agda.Utils.Singleton
 
 import Agda.Utils.Impossible
@@ -65,7 +65,7 @@ import Agda.Utils.Impossible
 
 -- TODO: do not export @SourceFile@ and force users to check the
 -- @AbsolutePath@ does exist.
-newtype SourceFile    = SourceFile    { srcFilePath :: AbsolutePath } deriving (Eq, Ord)
+newtype SourceFile    = SourceFile    { srcFilePath :: AbsolutePath } deriving (Eq, Ord, Show)
 newtype InterfaceFile = InterfaceFile { intFilePath :: AbsolutePath }
 
 instance Pretty SourceFile    where pretty = pretty . srcFilePath
@@ -114,6 +114,7 @@ data FindError
     --
     -- Invariant: The list of matching files has at least two
     -- elements.
+  deriving Show
 
 -- | Given the module name which the error applies to this function
 -- converts a 'FindError' to a 'TypeError'.

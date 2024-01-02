@@ -1,4 +1,5 @@
 {-# LANGUAGE NondecreasingIndentation #-}
+
 module Agda.TypeChecking.IApplyConfluence where
 
 import Prelude hiding (null, (!!))  -- do not use partial functions like !!
@@ -16,7 +17,6 @@ import qualified Data.IntSet as IntSet
 
 import Agda.Syntax.Common
 import Agda.Syntax.Position
-import Agda.Syntax.Internal.Generic
 import Agda.Syntax.Internal
 import Agda.Syntax.Internal.Pattern
 
@@ -32,7 +32,6 @@ import Agda.TypeChecking.Telescope
 import Agda.TypeChecking.Conversion
 import Agda.TypeChecking.Substitute
 
-import qualified Agda.Utils.BiMap as BiMap
 import Agda.Utils.Monad
 import Agda.Utils.Null
 import Agda.Utils.Maybe
@@ -40,7 +39,6 @@ import Agda.Utils.Singleton
 import Agda.Utils.Size
 import Agda.Utils.Impossible
 import Agda.Utils.Functor
-import Control.Monad.Reader
 
 
 checkIApplyConfluence_ :: QName -> TCM ()
@@ -66,12 +64,15 @@ checkIApplyConfluence_ f = whenM (isJust . optCubical <$> pragmaOptions) $ do
         forM_ cls $ checkIApplyConfluence f
     _ -> return ()
 
--- | @addClause f (Clause {namedClausePats = ps})@ checks that @f ps@
+-- | @checkIApplyConfluence f (Clause {namedClausePats = ps})@ checks that @f ps@
 -- reduces in a way that agrees with @IApply@ reductions.
 checkIApplyConfluence :: QName -> Clause -> TCM ()
 checkIApplyConfluence f cl = case cl of
       Clause {clauseBody = Nothing} -> return ()
       Clause {clauseType = Nothing} -> __IMPOSSIBLE__
+      -- Inserted clause, will respect boundaries whenever the
+      -- user-written clauses do. Saves a ton of work!
+      Clause {namedClausePats = ps} | hasDefP ps -> pure ()
       cl@Clause { clauseTel = clTel
                 , namedClausePats = ps
                 , clauseType = Just t
@@ -89,14 +90,24 @@ checkIApplyConfluence f cl = case cl of
             let es = patternsToElims ps
             let lhs = Def f es
 
-            reportSDoc "tc.iapply" 40 $ text "clause:" <+> pretty ps <+> "->" <+> pretty body
-            reportSDoc "tc.iapply" 20 $ "body =" <+> prettyTCM body
+            reportSDoc "tc.cover.iapply" 40 $ text "clause:" <+> pretty ps <+> "->" <+> pretty body
+            reportSDoc "tc.cover.iapply" 20 $ "body =" <+> prettyTCM body
+            inTopContext $ reportSDoc "tc.cover.iapply" 20 $ "Γ =" <+> prettyTCM clTel
 
             let
               k :: Substitution -> Comparison -> Type -> Term -> Term -> TCM ()
+              -- TODO (Amy, 2023-07-08): Simplifying the LHS of a
+              -- generated clause in its context is loopy, see #6722
+              k phi cmp ty u v | hasDefP ps = compareTerm cmp ty u v
               k phi cmp ty u v = do
-                u_e <- simplify u
-                ty_e <- simplify ty
+                u_e   <- simplify u
+                -- Issue #6725: Print these terms in their own TC state.
+                -- If printing the values before entering the conversion
+                -- checker is too expensive then we could save the TC
+                -- state and print them when erroring instead, but that
+                -- might cause space leaks.
+                (u_p, v_p) <- (,) <$> prettyTCM u_e <*> (prettyTCM =<< simplify v)
+
                 let
                   -- Make note of the context (literally): we're
                   -- checking that this specific clause in f is
@@ -109,18 +120,19 @@ checkIApplyConfluence f cl = case cl of
 
                   -- But if the conversion checking failed really early, we drop the extra
                   -- information. In that case, it's just noise.
-                  maybeDropCall e@(TypeError x y err)
-                    | UnequalTerms _ u' v' _ <- clValue err = do
-                      u <- prettyTCM u_e
-                      v <- prettyTCM =<< simplify v
-                      enterClosure err $ \e' -> do
+                  maybeDropCall e@(TypeError loc s err)
+                    | UnequalTerms _ u' v' _ <- clValue err =
+                      -- Issue #6725: restore the TC state from the
+                      -- error before dealing with the stored terms.
+                      withTCState (const s) $ enterClosure err $ \e' -> do
                         u' <- prettyTCM =<< simplify u'
                         v' <- prettyTCM =<< simplify v'
+
                         -- Specifically, we compare how the things are pretty-printed, to avoid
                         -- double-printing, rather than a more refined heuristic, since the
                         -- “failure case” here is *at worst* accidentally reminding the user of how
                         -- IApplyConfluence works.
-                        if (u == u' && v == v')
+                        if (u_p == u' && v_p == v')
                           then localTC (\e -> e { envCall = oldCall }) $ typeError e'
                           else throwError e
                   maybeDropCall x = throwError x
@@ -132,85 +144,6 @@ checkIApplyConfluence f cl = case cl of
                 traceCall why (compareTerm cmp ty u v `catchError` maybeDropCall)
 
             addContext clTel $ compareTermOnFace' k CmpEq phi trhs lhs body
-
-            case body of
-              MetaV m es_m' | Just es_m <- allApplyElims es_m' ->
-                caseMaybeM (isInteractionMeta m) (return ()) $ \ ii -> do
-                cs' <- do
-                  reportSDoc "tc.iapply.ip" 20 $ "clTel =" <+> prettyTCM clTel
-                  mv <- lookupLocalMeta m
-                  enterClosure (getMetaInfo mv) $ \ _ -> do -- mTel ⊢
-                  ty <- getMetaType m
-                  mTel <- getContextTelescope
-                  reportSDoc "tc.iapply.ip" 20 $ "size mTel =" <+> pretty (size mTel)
-                  reportSDoc "tc.iapply.ip" 20 $ "size es_m =" <+> pretty (size es_m)
-
-                  unless (size mTel == size es_m) $ reportSDoc "tc.iapply.ip" 20 $ "funny number of elims" <+> text (show (size mTel, size es_m))
-                  unless (size mTel <= size es_m) $ __IMPOSSIBLE__
-                  let over = if size mTel == size es_m then NotOverapplied else Overapplied
-
-                  -- extend telescope to handle extra elims
-                  TelV mTel1 _ <- telViewUpToPath (size es_m) ty
-                  reportSDoc "tc.iapply.ip" 20 $ "mTel1 =" <+> prettyTCM mTel1
-
-                  addContext (mTel1 `apply` teleArgs mTel) $ do
-                  mTel <- getContextTelescope
-
-                  addContext clTel $ do -- mTel.clTel ⊢
-                    () <- reportSDoc "tc.iapply.ip" 40 $ "mTel.clTel =" <+> (prettyTCM =<< getContextTelescope)
-                    forallFaceMaps phi __IMPOSSIBLE__ $ \_ alpha -> do
-                    -- mTel.clTel' ⊢
-                    -- mTel.clTel  ⊢ alpha : mTel.clTel'
-                    reportSDoc "tc.iapply.ip" 40 $ "mTel.clTel' =" <+> (prettyTCM =<< getContextTelescope)
-
-                    -- TelV tel _ <- telViewUpTo (size es) ty
-                    reportSDoc "tc.iapply.ip" 40 $ "i0S =" <+> pretty alpha
-                    reportSDoc "tc.iapply.ip" 20 $ fsep ["es :", pretty es]
-                    reportSDoc "tc.iapply.ip" 20 $ fsep ["es_alpha :", pretty (alpha `applySubst` es) ]
-
-                    -- reducing path applications on endpoints in lhs
-                    let
-                       loop t@(Def _ es) = loop' t es
-                       loop t@(Var _ es) = loop' t es
-                       loop t@(Con _ _ es) = loop' t es
-                       loop t@(MetaV _ es) = loop' t es
-                       loop t = return t
-                       loop' t es = ignoreBlocking <$> (reduceIApply' (pure . notBlocked) (pure . notBlocked $ t) es)
-                    lhs <- liftReduce $ traverseTermM loop (Def f (alpha `applySubst` es))
-
-                    let
-                        idG = raise (size clTel) $ (teleElims mTel [])
-
-                    reportSDoc "tc.iapply.ip" 20 $ fsep ["lhs :", pretty lhs]
-                    reportSDoc "tc.iapply.ip" 40 $ "cxt1 =" <+> (prettyTCM =<< getContextTelescope)
-                    reportSDoc "tc.iapply.ip" 40 $ prettyTCM $ alpha `applySubst` ValueCmpOnFace CmpEq phi trhs lhs (MetaV m idG)
-
-                    unifyElims (teleArgs mTel) (alpha `applySubst` es_m) $ \ sigma eqs -> do
-                    -- mTel.clTel'' ⊢
-                    -- mTel ⊢ clTel' ≃ clTel''.[eqs]
-                    -- mTel.clTel'' ⊢ sigma : mTel.clTel'
-                    reportSDoc "tc.iapply.ip" 40 $ "cxt2 =" <+> (prettyTCM =<< getContextTelescope)
-                    reportSDoc "tc.iapply.ip" 40 $ "sigma =" <+> pretty sigma
-                    reportSDoc "tc.iapply.ip" 20 $ "eqs =" <+> pretty eqs
-
-                    buildClosure $ IPBoundary
-                       { ipbEquations = eqs
-                       , ipbValue     = sigma `applySubst` lhs
-                       , ipbMetaApp   = alpha `applySubst` MetaV m es_m'
-                       , ipbOverapplied = over
-                       }
-
-                    -- WAS:
-                    -- fmap (over,) $ buildClosure $ (eqs
-                    --                , sigma `applySubst`
-                    --                    (ValueCmp CmpEq (AsTermsOf (alpha `applySubst` trhs)) lhs (alpha `applySubst` MetaV m es_m)))
-
-                let f ip = ip { ipClause = case ipClause ip of
-                                             ipc@IPClause{ipcBoundary = b}
-                                               -> ipc {ipcBoundary = b ++ cs'}
-                                             ipc@IPNoClause{} -> ipc}
-                modifyInteractionPoints (BiMap.adjust f ii)
-              _ -> return ()
 
 -- | current context is of the form Γ.Δ
 unifyElims :: Args

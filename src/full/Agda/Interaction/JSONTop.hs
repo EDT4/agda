@@ -14,7 +14,9 @@ import qualified Data.Set as Set
 
 import Agda.Interaction.AgdaTop
 import Agda.Interaction.Base
-         ( CommandState(..), CurrentFile(..), ComputeMode(..), Rewrite(..), OutputForm(..), OutputConstraint(..) )
+         ( CommandState(..), CurrentFile(..), ComputeMode(..), Rewrite(..)
+         , OutputConstraint_boot(..), OutputForm_boot(..))
+import Agda.Interaction.Output (OutputConstraint, OutputForm)
 import qualified Agda.Interaction.BasicOps as B
 import Agda.Interaction.EmacsTop
 import Agda.Interaction.JSON
@@ -48,8 +50,8 @@ import Agda.TypeChecking.Pretty.Warning
 import Agda.TypeChecking.Warnings
          ( WarningsAndNonFatalErrors(..) )
 
-import qualified Agda.Utils.Pretty as P
-import Agda.Utils.Pretty
+import qualified Agda.Syntax.Common.Pretty as P
+import Agda.Syntax.Common.Pretty
          ( Pretty(..), prettyShow )
 import Agda.Utils.Time
          ( CPUTime(..) )
@@ -242,6 +244,9 @@ encodeOC f encPrettyTCM = \case
           [ "value"  #= encPrettyTCM v
           , "type"   #= encPrettyTCM t
           ]
+ ResolveInstanceOF q -> kind "ResolveInstanceOF"
+  [ "name"           @= encodePretty q
+  ]
  PTSInstance a b -> kind "PTSInstance"
   [ "constraintObjs" #= traverse f [a, b]
   ]
@@ -362,7 +367,7 @@ instance EncodeTCM DisplayInfo where
 
 instance EncodeTCM GoalTypeAux where
   encodeTCM GoalOnly = kind "GoalOnly" []
-  encodeTCM (GoalAndHave expr) = kind "GoalAndHave"
+  encodeTCM (GoalAndHave expr _) = kind "GoalAndHave"
     [ "expr" #= encodePrettyTCM expr ]
   encodeTCM (GoalAndElaboration term) = kind "GoalAndElaboration"
     [ "term" #= encodePrettyTCM term ]
