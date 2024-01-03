@@ -80,7 +80,7 @@ checkRecDef
                                --   Does not include record parameters.
   -> [A.Field]                 -- ^ Field signatures.
   -> TCM ()
-checkRecDef i name uc (RecordDirectives ind eta0 pat con) (A.DataDefParams gpars ps) contel0 fields = do
+checkRecDef i name uc (RecordDirectives ind eta0 pat con mp) (A.DataDefParams gpars ps) contel0 fields = do
 
   -- Andreas, 2022-10-06, issue #6165:
   -- The target type of the constructor is a meaningless dummy expression which does not type-check.
@@ -325,6 +325,9 @@ checkRecDef i name uc (RecordDirectives ind eta0 pat con) (A.DataDefParams gpars
 
       let m = qnameToMName name  -- Name of record module.
 
+      let mpf :: forall a. LensHiding a => a -> a
+          mpf = maybe hideOrKeepInstance applyModParams (rangedThing <$> mp)
+
       eraseRecordParameters <- optEraseRecordParameters <$> pragmaOptions
       let maybeErase :: forall a. LensQuantity a => a -> a
           maybeErase | eraseRecordParameters = setQuantity zeroQuantity
@@ -334,7 +337,7 @@ checkRecDef i name uc (RecordDirectives ind eta0 pat con) (A.DataDefParams gpars
       -- section telescope changes the semantics, see e.g.
       -- test/Succeed/RecordInParModule.
       -- Ulf, 2016-03-02 but it's the right thing to do (#1759)
-      modifyContextInfo (hideOrKeepInstance . maybeErase) $ addRecordVar $ do
+      modifyContextInfo (mpf . maybeErase) $ addRecordVar $ do
 
         -- Add the record section.
 
@@ -353,7 +356,7 @@ checkRecDef i name uc (RecordDirectives ind eta0 pat con) (A.DataDefParams gpars
       -- Andreas, 2016-02-09, Issue 1815 (see also issue 1759).
       -- For checking the record declarations, hide the record parameters
       -- and the parameters of the parent modules.
-      modifyContextInfo (hideOrKeepInstance . maybeErase) $ do
+      modifyContextInfo (mpf . maybeErase) $ do
         -- If --erasure is used, then the parameters are erased in the
         -- types of the projections.
         erasure <- optErasure <$> pragmaOptions

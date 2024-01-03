@@ -154,6 +154,8 @@ import Agda.Utils.Impossible
     'with'                    { TokKeyword KwWith $$ }
     'opaque'                  { TokKeyword KwOpaque $$ }
     'unfolding'               { TokKeyword KwUnfolding $$ }
+    'auto-hide-or-instance'   { TokKeyword KwAutoHideOrInstance $$ }
+    'keep-hiding'             { TokKeyword KwKeepHiding $$ }
 
     'BUILTIN'                 { TokKeyword KwBUILTIN $$ }
     'CATCHALL'                { TokKeyword KwCATCHALL $$ }
@@ -238,6 +240,7 @@ Token :: { Token }
 Token
       -- Please keep these keywords in alphabetical order!
     : 'abstract'                { TokKeyword KwAbstract $1 }
+    | 'auto-hide-or-instance'   { TokKeyword KwAutoHideOrInstance $1 }
     | 'codata'                  { TokKeyword KwCoData $1 }
     | 'coinductive'             { TokKeyword KwCoInductive $1 }
     | 'constructor'             { TokKeyword KwConstructor $1 }
@@ -254,6 +257,7 @@ Token
     | 'infixl'                  { TokKeyword KwInfixL $1 }
     | 'infixr'                  { TokKeyword KwInfixR $1 }
     | 'instance'                { TokKeyword KwInstance $1 }
+    | 'keep-hiding'             { TokKeyword KwKeepHiding $1 }
     | 'let'                     { TokKeyword KwLet $1 }
     | 'macro'                   { TokKeyword KwMacro $1 }
     | 'module'                  { TokKeyword KwModule $1 }
@@ -1788,6 +1792,7 @@ RecordDirective
     | RecordInduction       { Induction $1 }
     | RecordEta             { Eta $1 }
     | RecordPatternMatching { PatternOrCopattern $1 }
+    | RecordModParams       { ModParams $1 }
 
 RecordEta :: { Ranged HasEta0 }
 RecordEta
@@ -1810,6 +1815,11 @@ RecordInduction :: { Ranged Induction }
 RecordInduction
     : 'inductive'   { Ranged (getRange $1) Inductive   }
     | 'coinductive' { Ranged (getRange $1) CoInductive }
+
+RecordModParams :: { Ranged ModParams }
+RecordModParams
+    : 'auto-hide-or-instance'   { Ranged (getRange $1) ModParamsHideOrInstance   }
+    | 'keep-hiding' { Ranged (getRange $1) ModParamsKeep }
 
 Opaque :: { Declaration }
   : 'opaque' Declarations0     { Opaque (getRange ($1, $2)) $2 }
@@ -2272,7 +2282,7 @@ extractRecordDirectives ds = do
 -- | Check for duplicate record directives.
 verifyRecordDirectives :: [RecordDirective] -> Parser RecordDirectives
 verifyRecordDirectives ds
-  | null rs   = return (RecordDirectives (listToMaybe is) (listToMaybe es) (listToMaybe ps) (listToMaybe cs))
+  | null rs   = return (RecordDirectives (listToMaybe is) (listToMaybe es) (listToMaybe ps) (listToMaybe cs) (listToMaybe mps))
       -- Here, all the lists is, es, cs, ps are at most singletons.
   | otherwise = parseErrorRange (head rs) $ unlines $ "Repeated record directives at:" : map prettyShow rs
   where
@@ -2285,6 +2295,7 @@ verifyRecordDirectives ds
   es' = [ e      | Eta e                <- ds ]
   cs  = [ (c, i) | Constructor c i      <- ds ]
   ps  = [ r      | PatternOrCopattern r <- ds ]
+  mps = [ mp     | ModParams mp         <- ds ]
 
 
 -- | Breaks up a string into substrings. Returns every maximal

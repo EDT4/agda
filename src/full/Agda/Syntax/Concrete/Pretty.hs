@@ -559,6 +559,7 @@ pRecordDirective = \case
       NotInstanceDef{} -> empty
   Eta eta -> pHasEta0 (rangedThing eta)
   PatternOrCopattern{} -> "pattern"
+  ModParams mp -> pretty (rangedThing mp)
 
 pRecord
   :: Erased
@@ -568,7 +569,7 @@ pRecord
   -> Maybe Expr
   -> [Declaration]
   -> Doc
-pRecord erased x (RecordDirectives ind eta pat con) tel me ds = vcat
+pRecord erased x (RecordDirectives ind eta pat con _) tel me ds = vcat
     [ sep
       [ hsep  [ "record"
               , prettyErased erased (pretty x)

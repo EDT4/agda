@@ -1810,7 +1810,7 @@ instance ToAbstract NiceDeclaration where
         conName d = errorNotConstrDecl d
 
   -- Record definitions (mucho interesting)
-    C.NiceRecDef r o a _ uc x (RecordDirectives ind eta pat cm) pars fields -> notAffectedByOpaque $ do
+    C.NiceRecDef r o a _ uc x (RecordDirectives ind eta pat cm mp) pars fields -> notAffectedByOpaque $ do
       reportSLn "scope.rec.def" 20 ("checking " ++ show o ++ " RecDef for " ++ prettyShow x)
       -- #3008: Termination pragmas are ignored in records
       checkNoTerminationPragma InRecordDef fields
@@ -1872,7 +1872,7 @@ instance ToAbstract NiceDeclaration where
         printScope "rec" 15 "record complete"
         f <- getConcreteFixity x
         let params = DataDefParams gvars pars
-        let dir' = RecordDirectives ind eta pat cm'
+        let dir' = RecordDirectives ind eta pat cm' mp
         return [ A.RecDef (mkDefInfoInstance x f PublicAccess a inst NotMacroDef r) x' uc dir' params contel afields ]
 
     NiceModule r p a e x@(C.QName name) tel ds -> notAffectedByOpaque $ do

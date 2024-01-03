@@ -193,7 +193,7 @@ instance (Hilite a, Hilite b) => Hilite (a, b) where
 -- | getQuantityAttr       | Common.Quantity             | Symbol (if range)
 
 instance Hilite A.RecordDirectives where
-  hilite (RecordDirectives _ _ _ c) = hilite c
+  hilite (RecordDirectives _ _ _ c _) = hilite c
 
 instance Hilite A.Declaration where
   hilite = \case

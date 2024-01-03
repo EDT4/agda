@@ -152,6 +152,7 @@ tokens :-
 
 -- Keywords
 <0,code> abstract          { keyword KwAbstract }
+<0,code> "auto-hide-or-instance" { keyword KwAutoHideOrInstance }
 <0,code> codata            { keyword KwCoData }
 <0,code> coinductive       { keyword KwCoInductive }
 <0,code> constructor       { keyword KwConstructor }
@@ -168,6 +169,7 @@ tokens :-
 <0,code> infixr            { keyword KwInfixR }
 <0,code> instance          { keyword KwInstance }
 <0,code> interleaved       { keyword KwInterleaved }
+<0,code> "keep-hiding"     { keyword KwKeepHiding }
 <0,code> let               { keyword KwLet }
 <0,code> macro             { keyword KwMacro }
 <0,code> module            { keyword KwModule }

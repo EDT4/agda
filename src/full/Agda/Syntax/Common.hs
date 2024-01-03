@@ -119,19 +119,40 @@ data RecordDirectives' a = RecordDirectives
   , recHasEta      :: Maybe HasEta0
   , recPattern     :: Maybe Range
   , recConstructor :: Maybe a
+  , recModParams   :: Maybe(Ranged ModParams)
   } deriving (Functor, Show, Eq)
 
 emptyRecordDirectives :: RecordDirectives' a
-emptyRecordDirectives = RecordDirectives empty empty empty empty
+emptyRecordDirectives = RecordDirectives empty empty empty empty empty
 
 instance HasRange a => HasRange (RecordDirectives' a) where
-  getRange (RecordDirectives a b c d) = getRange (a,b,c,d)
+  getRange (RecordDirectives a b c d e) = getRange (a,b,c,d,e)
 
 instance KillRange a => KillRange (RecordDirectives' a) where
-  killRange (RecordDirectives a b c d) = killRangeN RecordDirectives a b c d
+  killRange (RecordDirectives a b c d e) = killRangeN RecordDirectives a b c d e
 
 instance NFData a => NFData (RecordDirectives' a) where
-  rnf (RecordDirectives a b c d) = c `seq` rnf (a, b, d)
+  rnf (RecordDirectives a b c d e) = c `seq` rnf (a, b, d, e)
+
+---------------------------------------------------------------------------
+-- * Module parameter settings
+---------------------------------------------------------------------------
+
+data ModParams
+  = ModParamsHideOrInstance
+  | ModParamsKeep
+  deriving (Show, Eq, Ord)
+
+instance Pretty ModParams where
+  pretty ModParamsHideOrInstance   = "auto-hide-or-instance"
+  pretty ModParamsKeep = "keep-hiding"
+
+instance NFData ModParams where
+  rnf _ = ()
+
+applyModParams :: LensHiding a => ModParams -> a -> a
+applyModParams ModParamsHideOrInstance = hideOrKeepInstance
+applyModParams ModParamsKeep           = id
 
 ---------------------------------------------------------------------------
 -- * Eta-equality
