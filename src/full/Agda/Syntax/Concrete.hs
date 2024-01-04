@@ -453,6 +453,7 @@ data RecordDirective
    | PatternOrCopattern Range
        -- ^ If declaration @pattern@ is present, give its range.
    | ModParams (Ranged ModParams)
+   | ModSelf (Ranged ModSelf)
    deriving (Eq, Show)
 
 type RecordDirectives = RecordDirectives' (Name, IsInstance)
@@ -937,6 +938,7 @@ instance HasRange RecordDirective where
   getRange (Constructor a b)      = getRange (a, b)
   getRange (PatternOrCopattern r) = r
   getRange (ModParams a)          = getRange a
+  getRange (ModSelf a)            = getRange a
 
 instance HasRange Declaration where
   getRange (TypeSig _ _ x t)       = fuseRange x t
@@ -1090,6 +1092,7 @@ instance KillRange RecordDirective where
   killRange (Constructor a b)      = killRangeN Constructor a b
   killRange (PatternOrCopattern _) = PatternOrCopattern noRange
   killRange (ModParams a)          = killRangeN ModParams a
+  killRange (ModSelf a)            = killRangeN ModSelf a
 
 instance KillRange Declaration where
   killRange (TypeSig i t n e)       = killRangeN (TypeSig i) t n e
@@ -1317,6 +1320,7 @@ instance NFData RecordDirective where
   rnf (Constructor a b)      = rnf (a, b)
   rnf (PatternOrCopattern _) = ()
   rnf (ModParams a)          = rnf a
+  rnf (ModSelf a)            = rnf a
 
 instance NFData Declaration where
   rnf (TypeSig a b c d)       = rnf a `seq` rnf b `seq` rnf c `seq` rnf d

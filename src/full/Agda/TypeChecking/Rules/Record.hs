@@ -80,7 +80,7 @@ checkRecDef
                                --   Does not include record parameters.
   -> [A.Field]                 -- ^ Field signatures.
   -> TCM ()
-checkRecDef i name uc (RecordDirectives ind eta0 pat con mp) (A.DataDefParams gpars ps) contel0 fields = do
+checkRecDef i name uc (RecordDirectives ind eta0 pat con mp ms) (A.DataDefParams gpars ps) contel0 fields = do
 
   -- Andreas, 2022-10-06, issue #6165:
   -- The target type of the constructor is a meaningless dummy expression which does not type-check.
@@ -319,14 +319,18 @@ checkRecDef i name uc (RecordDirectives ind eta0 pat con mp) (A.DataDefParams gp
         ]
 -}
 
-      let info = setRelevance recordRelevance defaultArgInfo
+
+      let mpf :: forall a. LensHiding a => a -> a
+          mpf = maybe hideOrKeepInstance applyModParams (rangedThing <$> mp)
+
+          msf :: forall a. LensHiding a => a -> a
+          msf = maybe id applyModSelf (rangedThing <$> ms)
+
+          info = setRelevance recordRelevance (msf defaultArgInfo)
           addRecordVar =
             addRecordNameContext (setArgInfo info $ defaultDom rect)
 
       let m = qnameToMName name  -- Name of record module.
-
-      let mpf :: forall a. LensHiding a => a -> a
-          mpf = maybe hideOrKeepInstance applyModParams (rangedThing <$> mp)
 
       eraseRecordParameters <- optEraseRecordParameters <$> pragmaOptions
       let maybeErase :: forall a. LensQuantity a => a -> a

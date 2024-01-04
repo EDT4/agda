@@ -154,8 +154,8 @@ import Agda.Utils.Impossible
     'with'                    { TokKeyword KwWith $$ }
     'opaque'                  { TokKeyword KwOpaque $$ }
     'unfolding'               { TokKeyword KwUnfolding $$ }
-    'auto-hide-or-instance'   { TokKeyword KwAutoHideOrInstance $$ }
-    'keep-hiding'             { TokKeyword KwKeepHiding $$ }
+    'module-parameter-hiding' { TokKeyword KwModParamHiding $$ }
+    'module-self-hiding'      { TokKeyword KwModSelfHiding $$ }
 
     'BUILTIN'                 { TokKeyword KwBUILTIN $$ }
     'CATCHALL'                { TokKeyword KwCATCHALL $$ }
@@ -240,7 +240,6 @@ Token :: { Token }
 Token
       -- Please keep these keywords in alphabetical order!
     : 'abstract'                { TokKeyword KwAbstract $1 }
-    | 'auto-hide-or-instance'   { TokKeyword KwAutoHideOrInstance $1 }
     | 'codata'                  { TokKeyword KwCoData $1 }
     | 'coinductive'             { TokKeyword KwCoInductive $1 }
     | 'constructor'             { TokKeyword KwConstructor $1 }
@@ -257,11 +256,12 @@ Token
     | 'infixl'                  { TokKeyword KwInfixL $1 }
     | 'infixr'                  { TokKeyword KwInfixR $1 }
     | 'instance'                { TokKeyword KwInstance $1 }
-    | 'keep-hiding'             { TokKeyword KwKeepHiding $1 }
     | 'let'                     { TokKeyword KwLet $1 }
     | 'macro'                   { TokKeyword KwMacro $1 }
     | 'module'                  { TokKeyword KwModule $1 }
     | 'interleaved'             { TokKeyword KwInterleaved $1 }
+    | 'module-parameter-hiding' { TokKeyword KwModParamHiding $1 }
+    | 'module-self-hiding'      { TokKeyword KwModSelfHiding $1 }
     | 'mutual'                  { TokKeyword KwMutual $1 }
     | 'no-eta-equality'         { TokKeyword KwNoEta $1 }
     | 'opaque'                  { TokKeyword KwOpaque $1 }
@@ -1793,6 +1793,7 @@ RecordDirective
     | RecordEta             { Eta $1 }
     | RecordPatternMatching { PatternOrCopattern $1 }
     | RecordModParams       { ModParams $1 }
+    | RecordModSelf         { ModSelf $1 }
 
 RecordEta :: { Ranged HasEta0 }
 RecordEta
@@ -1818,8 +1819,11 @@ RecordInduction
 
 RecordModParams :: { Ranged ModParams }
 RecordModParams
-    : 'auto-hide-or-instance'   { Ranged (getRange $1) ModParamsHideOrInstance   }
-    | 'keep-hiding' { Ranged (getRange $1) ModParamsKeep }
+    : 'module-parameter-hiding' id { Ranged (getRange $1) (AnyModParams(snd $2))  }
+
+RecordModSelf :: { Ranged ModSelf }
+RecordModSelf
+    : 'module-self-hiding' id { Ranged (getRange $1) (AnyModSelf(snd $2))  }
 
 Opaque :: { Declaration }
   : 'opaque' Declarations0     { Opaque (getRange ($1, $2)) $2 }
@@ -2282,7 +2286,7 @@ extractRecordDirectives ds = do
 -- | Check for duplicate record directives.
 verifyRecordDirectives :: [RecordDirective] -> Parser RecordDirectives
 verifyRecordDirectives ds
-  | null rs   = return (RecordDirectives (listToMaybe is) (listToMaybe es) (listToMaybe ps) (listToMaybe cs) (listToMaybe mps))
+  | null rs   = return (RecordDirectives (listToMaybe is) (listToMaybe es) (listToMaybe ps) (listToMaybe cs) (listToMaybe mps) (listToMaybe mss))
       -- Here, all the lists is, es, cs, ps are at most singletons.
   | otherwise = parseErrorRange (head rs) $ unlines $ "Repeated record directives at:" : map prettyShow rs
   where
@@ -2296,6 +2300,7 @@ verifyRecordDirectives ds
   cs  = [ (c, i) | Constructor c i      <- ds ]
   ps  = [ r      | PatternOrCopattern r <- ds ]
   mps = [ mp     | ModParams mp         <- ds ]
+  mss = [ ms     | ModSelf ms           <- ds ]
 
 
 -- | Breaks up a string into substrings. Returns every maximal

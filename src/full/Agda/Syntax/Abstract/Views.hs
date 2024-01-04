@@ -492,7 +492,7 @@ instance DeclaredNames KName where
   declaredNames = singleton
 
 instance DeclaredNames RecordDirectives where
-  declaredNames (RecordDirectives i _ _ c _) = kc where
+  declaredNames (RecordDirectives i _ _ c _ _) = kc where
     kc = maybe mempty (singleton . WithKind k) c
     k  = maybe ConName (conKindOfName . rangedThing) i
 

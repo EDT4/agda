@@ -20,7 +20,7 @@ data Keyword
         | KwForall | KwRecord | KwConstructor | KwField
         | KwInductive | KwCoInductive
         | KwEta | KwNoEta
-        | KwAutoHideOrInstance | KwKeepHiding
+        | KwModParamHiding | KwModSelfHiding
         | KwHiding | KwUsing | KwRenaming | KwTo | KwPublic
         | KwOpaque | KwUnfolding
         | KwOPTIONS | KwBUILTIN | KwLINE
