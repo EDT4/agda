@@ -380,6 +380,7 @@ computeGeneralization genRecMeta nameMap allmetas = postponeInstanceConstraints 
                         MetaV{} <- instBody inst = ""
                       | otherwise                = "." ++ show i
               setMetaNameSuggestion m (parentName ++ suf)
+              getMetaGeneralizableArgInfo m >>= setMetaGeneralizableArgInfo m . hideOrKeepInstance
               suggestNames (i + 1) ms
         unless (null metas) $
           reportSDoc "tc.generalize" 40 $ hcat ["Inherited metas from ", prettyTCM x, ":"] <?> prettyList_ (map prettyTCM metas)
