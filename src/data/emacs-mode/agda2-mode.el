@@ -28,7 +28,7 @@
 
 ;;; Code:
 
-(defvar agda2-version "2.6.5"
+(defvar agda2-version "2.8.0"
   "The version of the Agda mode.
 Note that the same version of the Agda executable must be used.")
 
@@ -232,7 +232,7 @@ constituents.")
     (agda2-give                              ,(kbd "C-c C-SPC")   (local)        "Give")
     (agda2-elaborate-give                    ,(kbd "C-c C-m")     (local)        "Elaborate and Give")
     (agda2-refine                            "\C-c\C-r"           (local)        "Refine")
-    (agda2-auto-maybe-all                    "\C-c\C-a"           (local global) "Auto")
+    (agda2-mimer-maybe-all                   "\C-c\C-a"           (local global) "Auto")
     (agda2-make-case                         "\C-c\C-c"           (local)        "Case")
     (agda2-goal-type                         "\C-c\C-t"           (local)        "Goal type")
     (agda2-show-context                      "\C-c\C-e"           (local)        "Context (environment)")
@@ -886,16 +886,6 @@ of new goals."
       (agda2-goal-cmd "Cmd_refine_or_intro True" 'save 'goal)
     (agda2-goal-cmd "Cmd_refine_or_intro False" 'save 'goal)))
 
-(defun agda2-autoOne ()
- "Simple proof search" (interactive)
- (agda2-goal-cmd "Cmd_autoOne" 'save 'goal))
-
-(defun agda2-autoAll ()
-  "Solves all goals by simple proof search."
-  (interactive)
-  (agda2-go nil nil 'busy t "Cmd_autoAll")
-)
-
 (defun agda2-make-case ()
   "Refine the pattern variables given in the goal.
 Assumes that <clause> = {!<variables>!} is on one line."
@@ -1379,13 +1369,26 @@ Either only one if point is a goal, or all of them."
                           'agda2-solveAll))
 )
 
-(defun agda2-auto-maybe-all ()
-  "Run auto.
+(defun agda2-mimer-maybe-all ()
+  "Run proof search.
 Either only one if point is a goal, or all of them."
   (interactive)
   (call-interactively (if (agda2-goal-at (point))
-                          'agda2-autoOne
-                          'agda2-autoAll))
+                          'agda2-mimer
+                          'agda2-mimerAll))
+)
+
+(agda2-maybe-normalised-asis
+  agda2-mimer
+  "Run proof search on a goal."
+  "Cmd_autoOne"
+  'goal
+)
+
+(agda2-maybe-normalised-toplevel-asis-noprompt
+  agda2-mimerAll
+  "Solves all goals by simple proof search."
+  "Cmd_autoAll"
 )
 
 (agda2-maybe-normalised-toplevel-asis-noprompt
