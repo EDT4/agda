@@ -17,7 +17,9 @@ import Agda.TypeChecking.Monad
 import Agda.TypeChecking.CompiledClause
 import Agda.TypeChecking.Positivity.Occurrence
 import Agda.TypeChecking.Coverage.SplitTree
+import Agda.TypeChecking.DiscrimTree.Types
 
+import Agda.Utils.Functor
 import Agda.Utils.Permutation
 
 import Agda.Utils.Impossible
@@ -28,9 +30,14 @@ instance EmbPrj a => EmbPrj (Dom a) where
   value = valueN Dom
 
 instance EmbPrj Signature where
-  icod_ (Sig a b c) = icodeN' Sig a b c
+  icod_ (Sig a b c d) = icodeN' Sig a b c d
 
   value = valueN Sig
+
+instance EmbPrj InstanceTable where
+  icod_ (InstanceTable a b) = icodeN' InstanceTable a b
+
+  value = valueN InstanceTable
 
 instance EmbPrj Section where
   icod_ (Section a) = icodeN' Section a
@@ -212,9 +219,22 @@ instance EmbPrj CompKit where
   icod_ (CompKit a b) = icodeN' CompKit a b
   value = valueN CompKit
 
-instance EmbPrj Definition where
-  icod_ (Defn a b c d e f g h i j k l m n o p q r s) = icodeN' Defn a b (P.killRange c) d e f g h i j k l m n o p q r s
+instance EmbPrj InstanceInfo where
+  icod_ (InstanceInfo a b) = icodeN' InstanceInfo a b
+  value = valueN InstanceInfo
 
+instance EmbPrj Definition where
+  icod_ (Defn a b c d e f g h i j k l m n o p blocked r s) =
+    icodeN' Defn a b (P.killRange c) d e f g h i j k l m n o p (ossify blocked) r s
+    where
+      -- Andreas, 2024-01-02, issue #7044:
+      -- After serialization, a definition can never be unblocked,
+      -- since all metas are ossified.
+      -- Thus, we turn any blocker into 'neverUnblock'.
+      ossify :: Blocked_ -> Blocked_
+      ossify = \case
+        b@NotBlocked{} -> b
+        Blocked b () -> Blocked neverUnblock ()
   value = valueN Defn
 
 instance EmbPrj NotBlocked where
@@ -232,11 +252,22 @@ instance EmbPrj NotBlocked where
     valu [3, a] = valuN MissingClauses a
     valu _      = malformed
 
-instance EmbPrj Blocked_ where
-  icod_ (NotBlocked a b) = icodeN' NotBlocked a b
-  icod_ Blocked{} = __IMPOSSIBLE__
+-- Andreas, 2024-01-02, issue #7044.
+-- We only serialize 'neverUnblock';
+-- other than that, there should not be any blockers left at serialization time.
+blockedToMaybe :: Blocked_ -> Maybe NotBlocked
+blockedToMaybe = \case
+  NotBlocked a ()       -> Just a
+  Blocked a ()
+    | a == neverUnblock -> Nothing
+    | otherwise         -> __IMPOSSIBLE__
 
-  value = valueN NotBlocked
+blockedFromMaybe :: Maybe NotBlocked -> Blocked_
+blockedFromMaybe = maybe (Blocked neverUnblock ()) (`NotBlocked` ())
+
+instance EmbPrj Blocked_ where
+  icod_ = icod_ . blockedToMaybe
+  value = blockedFromMaybe <.> value
 
 instance EmbPrj NLPat where
   icod_ (PVar a b)      = icodeN 0 PVar a b
@@ -390,7 +421,7 @@ instance EmbPrj BuiltinSort where
 
 instance EmbPrj Defn where
   icod_ (Axiom       a)                                 = icodeN 0 Axiom a
-  icod_ (Function    a b s t u c d e f g h i j k l m)   = icodeN 1 (\ a b s -> Function a b s t) a b s u c d e f g h i j k l m
+  icod_ (Function    a b s t u c d e f g h i j k)       = icodeN 1 (\ a b s -> Function a b s t) a b s u c d e f g h i j k
   icod_ (Datatype    a b c d e f g h i j)               = icodeN 2 Datatype a b c d e f g h i j
   icod_ (Record      a b c d e f g h i j k l m)         = icodeN 3 Record a b c d e f g h i j k l m
   icod_ (Constructor a b c d e f g h i j k)             = icodeN 4 Constructor a b c d e f g h i j k
@@ -402,8 +433,8 @@ instance EmbPrj Defn where
 
   value = vcase valu where
     valu [0, a]                                        = valuN Axiom a
-    valu [1, a, b, s, u, c, d, e, f, g, h, i, j, k, l, m]
-                                                       = valuN (\ a b s -> Function a b s Nothing) a b s u c d e f g h i j k l m
+    valu [1, a, b, s, u, c, d, e, f, g, h, i, j, k]
+                                                       = valuN (\ a b s -> Function a b s Nothing) a b s u c d e f g h i j k
     valu [2, a, b, c, d, e, f, g, h, i, j]             = valuN Datatype a b c d e f g h i j
     valu [3, a, b, c, d, e, f, g, h, i, j, k, l, m]    = valuN Record   a b c d e f g h i j k l m
     valu [4, a, b, c, d, e, f, g, h, i, j, k]          = valuN Constructor a b c d e f g h i j k
@@ -441,16 +472,7 @@ instance EmbPrj a => EmbPrj (SplitTree' a) where
     valu [0, a, b, c] = valuN SplitAt a b c
     valu _            = malformed
 
-instance EmbPrj FunctionFlag where
-  icod_ FunStatic       = pure 0
-  icod_ FunInline       = pure 1
-  icod_ FunMacro        = pure 2
-
-  value = \case
-    0 -> pure FunStatic
-    1 -> pure FunInline
-    2 -> pure FunMacro
-    _ -> malformed
+instance EmbPrj FunctionFlag
 
 instance EmbPrj a => EmbPrj (WithArity a) where
   icod_ (WithArity a b) = icodeN' WithArity a b
@@ -628,3 +650,31 @@ instance EmbPrj a => EmbPrj (Judgement a) where
 instance EmbPrj RemoteMetaVariable where
   icod_ (RemoteMetaVariable a b c) = icodeN' RemoteMetaVariable a b c
   value = valueN RemoteMetaVariable
+
+instance EmbPrj Key where
+  icod_ (RigidK x y) = icodeN 0 RigidK x y
+  icod_ (LocalK x y) = icodeN 1 LocalK x y
+  icod_ PiK          = icodeN 2 PiK
+  icod_ FlexK        = icodeN 3 FlexK
+  icod_ ConstK       = icodeN 4 ConstK
+  icod_ SortK        = icodeN 5 SortK
+
+  value = vcase valu where
+    valu [0, x, y] = valuN RigidK x y
+    valu [1, x, y] = valuN LocalK x y
+    valu [2]       = valuN PiK
+    valu [3]       = valuN FlexK
+    valu [4]       = valuN ConstK
+    valu [5]       = valuN SortK
+    valu _         = malformed
+
+instance (EmbPrj a, Ord a) => EmbPrj (DiscrimTree a) where
+  icod_ EmptyDT        = icodeN' EmptyDT
+  icod_ (DoneDT s)     = icodeN' DoneDT s
+  icod_ (CaseDT i k s) = icodeN' CaseDT i k s
+
+  value = vcase valu where
+    valu []        = valuN EmptyDT
+    valu [a]       = valuN DoneDT a
+    valu [i, k, s] = valuN CaseDT i k s
+    valu _         = malformed
