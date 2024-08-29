@@ -44,7 +44,8 @@ import qualified Agda.TypeChecking.Monad.Benchmark as Bench
 import {-# SOURCE #-} Agda.TypeChecking.Monad.Options
   (getIncludeDirs, libToTCM)
 import Agda.TypeChecking.Monad.State (topLevelModuleName)
-import Agda.TypeChecking.Warnings (runPM)
+import Agda.TypeChecking.Monad.Trace (setCurrentRange)
+import Agda.TypeChecking.Warnings (runPM, warning)
 
 import Agda.Version ( version )
 
@@ -55,6 +56,7 @@ import Agda.Utils.List1 ( List1, pattern (:|) )
 import qualified Agda.Utils.List1 as List1
 import Agda.Utils.Monad ( ifM, unlessM )
 import Agda.Syntax.Common.Pretty ( Pretty(..), prettyShow )
+import qualified Agda.Syntax.Common.Pretty as P
 import Agda.Utils.Singleton
 
 import Agda.Utils.Impossible
@@ -87,15 +89,28 @@ mkInterfaceFile fp = do
 toIFile :: SourceFile -> TCM AbsolutePath
 toIFile (SourceFile src) = do
   let fp = filePath src
-  mroot <- ifM (optLocalInterfaces <$> commandLineOptions)
-               {- then -} (pure Nothing)
-               {- else -} (libToTCM $ findProjectRoot (takeDirectory fp))
-  pure $ replaceModuleExtension ".agdai" $ case mroot of
-    Nothing   -> src
+  let localIFile = replaceModuleExtension ".agdai" src
+  mroot <- libToTCM $ findProjectRoot (takeDirectory fp)
+  case mroot of
+    Nothing   -> pure localIFile
     Just root ->
       let buildDir = root </> "_build" </> version </> "agda"
-          fileName = makeRelative root fp
-      in mkAbsolute $ buildDir </> fileName
+          fileName = makeRelative root (filePath localIFile)
+          separatedIFile = mkAbsolute $ buildDir </> fileName
+          ifilePreference = ifM (optLocalInterfaces <$> commandLineOptions)
+            (pure (localIFile, separatedIFile))
+            (pure (separatedIFile, localIFile))
+      in do
+        separatedIFileExists <- liftIO $ doesFileExistCaseSensitive $ filePath separatedIFile
+        localIFileExists <- liftIO $ doesFileExistCaseSensitive $ filePath localIFile
+        case (separatedIFileExists, localIFileExists) of
+          (False, False) -> fst <$> ifilePreference
+          (False, True) -> pure localIFile
+          (True, False) -> pure separatedIFile
+          (True, True) -> do
+            ifiles <- ifilePreference
+            warning $ uncurry DuplicateInterfaceFiles ifiles
+            pure $ fst ifiles
 
 replaceModuleExtension :: String -> AbsolutePath -> AbsolutePath
 replaceModuleExtension ext@('.':_) = mkAbsolute . (++ ext) .  dropAgdaExtension . filePath
@@ -179,7 +194,7 @@ findFile'' dirs m modFile =
 -- | Finds the interface file corresponding to a given top-level
 -- module file. The returned paths are absolute.
 --
--- Raises 'Nothing' if the the interface file cannot be found.
+-- Raises 'Nothing' if the interface file cannot be found.
 
 findInterfaceFile'
   :: SourceFile                 -- ^ Path to the source file
@@ -256,17 +271,14 @@ moduleName file parsedModule = billTo [Bench.ModuleName] $ do
   let defaultName = rootNameModule file
       raw         = rawTopLevelModuleNameForModule parsedModule
   topLevelModuleName =<< if isNoName raw
-    then do
+    then setCurrentRange (rangeFromAbsolutePath file) do
       m <- runPM (fst <$> parse moduleNameParser defaultName)
              `catchError` \_ ->
-           typeError $ GenericError $
-             "The file name " ++ prettyShow file ++
-             " is invalid because it does not correspond to a valid module name."
+           typeError $ InvalidFileName file DoesNotCorrespondToValidModuleName
       case m of
         Qual {} ->
-          typeError $ GenericError $
-            "The file name " ++ prettyShow file ++ " is invalid because " ++
-            defaultName ++ " is not an unqualified module name."
+          typeError $ InvalidFileName file $
+            RootNameModuleNotAQualifiedModuleName $ T.pack defaultName
         QName {} ->
           return $ RawTopLevelModuleName
             { rawModuleNameRange = getRange m
