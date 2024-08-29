@@ -20,11 +20,11 @@
 # -- Project information -----------------------------------------------------
 
 project = 'Agda'
-copyright = u'''2005–2023 remains with the authors.'''
-author = u'The Agda Team'
+copyright = u'''2005–2024 remains with the authors.'''
+author = u'Agda Developers'
 
 # The short X.Y version
-version = '2.6.5'
+version = '2.8.0'
 # The full version, including alpha/beta/rc tags
 release = version
 
