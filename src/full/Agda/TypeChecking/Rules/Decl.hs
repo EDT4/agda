@@ -6,7 +6,6 @@ module Agda.TypeChecking.Rules.Decl where
 
 import Prelude hiding ( null )
 
-import Control.Monad
 import Control.Monad.Writer (tell)
 
 import Data.Either (partitionEithers)
@@ -25,6 +24,7 @@ import Agda.Syntax.Internal
 import qualified Agda.Syntax.Info as Info
 import Agda.Syntax.Position
 import Agda.Syntax.Common
+import Agda.Syntax.Common.Pretty (prettyShow)
 import Agda.Syntax.Literal
 import Agda.Syntax.Scope.Base ( KindOfName(..) )
 
@@ -68,10 +68,11 @@ import Agda.Termination.TermCheck
 import Agda.Utils.Function ( applyUnless )
 import Agda.Utils.Functor
 import Agda.Utils.Lens
+import Agda.Utils.List1 ( List1, pattern (:|) )
+import qualified Agda.Utils.List1 as List1
 import Agda.Utils.Maybe
 import Agda.Utils.Monad
 import Agda.Utils.Null
-import Agda.Syntax.Common.Pretty (prettyShow)
 import Agda.Utils.Size
 import Agda.Utils.Update
 import qualified Agda.Syntax.Common.Pretty as P
@@ -163,7 +164,7 @@ checkDecl d = setCurrentRange d $ do
       A.DataDef i x uc ps cs   -> impossible $ check x i $ checkDataDef i x uc ps cs
       A.RecDef i x uc dir ps tel cs -> impossible $ check x i $ do
                                     checkRecDef i x uc dir ps tel cs
-                                    blockId <- mutualBlockOf x
+                                    blockId <- defMutual <$> getConstInfo x
 
                                     -- Andreas, 2016-10-01 testing whether
                                     -- envMutualBlock is set correctly.
@@ -450,7 +451,7 @@ checkTermination_ d = Bench.billTo [Bench.Termination] $ do
   reportSLn "tc.decl" 20 $ "checkDecl: checking termination..."
   -- If there are some termination errors, we throw a warning.
   -- The termination checker already marked non-terminating functions as such.
-  unlessNullM (termDecl d) $ \ termErrs -> do
+  List1.unlessNullM (termDecl d) \ termErrs -> do
     warning $ TerminationIssue termErrs
 
 -- | Check a set of mutual names for positivity.
@@ -565,20 +566,19 @@ checkGeneralize s i info x e = do
       ]
 
     lang <- getLanguage
-    addConstant x $ (defaultDefn info x tGen lang GeneralizableVar)
-                    { defArgGeneralizable = SomeGeneralizableArgs n }
-
+    addConstant x $ defaultDefn info x tGen lang $
+      GeneralizableVar $ SomeGeneralizableArgs n
 
 -- | Type check an axiom.
 checkAxiom :: KindOfName -> A.DefInfo -> ArgInfo ->
-              Maybe [Occurrence] -> QName -> A.Expr -> TCM ()
+              Maybe (List1 Occurrence) -> QName -> A.Expr -> TCM ()
 checkAxiom = checkAxiom' Nothing
 
 -- | Data and record type signatures need to remember the generalized
 --   parameters for when checking the corresponding definition, so for these we
 --   pass in the parameter telescope separately.
 checkAxiom' :: Maybe A.GeneralizeTelescope -> KindOfName -> A.DefInfo -> ArgInfo ->
-               Maybe [Occurrence] -> QName -> A.Expr -> TCM ()
+               Maybe (List1 Occurrence) -> QName -> A.Expr -> TCM ()
 checkAxiom' gentel kind i info0 mp x e = whenAbstractFreezeMetasAfter i $ defaultOpenLevelsToZero $ do
   -- Andreas, 2016-07-19 issues #418 #2102:
   -- We freeze metas in type signatures of abstract definitions, to prevent
@@ -633,11 +633,13 @@ checkAxiom' gentel kind i info0 mp x e = whenAbstractFreezeMetasAfter i $ defaul
 
   -- Ensure that polarity pragmas do not contain too many occurrences.
   (occs, pols) <- case mp of
-    Nothing   -> return ([], [])
-    Just occs -> do
-      TelV tel _ <- telView t
-      let n = length (telToList tel)
-      when (n < length occs) $
+    Nothing    -> return ([], [])
+    Just occs1 -> do
+      let occs = List1.toList occs1
+      let m = length occs
+      TelV tel _ <- telViewUpTo m t
+      let n = size tel
+      when (n < m) $
         typeError $ TooManyPolarities x n
       let pols = map polFromOcc occs
       reportSLn "tc.polarity.pragma" 10 $
@@ -881,36 +883,41 @@ checkSection e x tel ds =
 --   Returns the remaining module parameters as an open telescope.
 --   Warning: the returned telescope is /not/ the final result,
 --   an actual instantiation of the parameters does not occur.
-checkModuleArity
-  :: ModuleName           -- ^ Name of applied module.
+checkModuleArity ::
+     ModuleName           -- ^ Name of applied module.
   -> Telescope            -- ^ The module parameters.
-  -> [NamedArg A.Expr]  -- ^ The arguments this module is applied to.
+  -> [NamedArg A.Expr]    -- ^ The arguments this module is applied to.
   -> TCM Telescope        -- ^ The remaining module parameters (has free de Bruijn indices!).
-checkModuleArity m tel args = check tel args
-  where
-    bad = typeError $ ModuleArityMismatch m tel args
+checkModuleArity m tel = \case
+  []   -> return tel
+  a:as -> check1 tel a as
+    where
+    bad = typeError $ ModuleArityMismatch m tel (a :| as)
 
     check :: Telescope -> [NamedArg A.Expr] -> TCM Telescope
     check tel []             = return tel
-    check EmptyTel (_:_)     = bad
-    check (ExtendTel dom@Dom{domInfo = info} btel) args0@(Arg info' arg : args) =
+    check tel (a : as)       = check1 tel a as
+
+    check1 :: Telescope -> NamedArg A.Expr -> [NamedArg A.Expr] -> TCM Telescope
+    check1 EmptyTel _ _ = bad
+    check1 (ExtendTel dom@Dom{domInfo = info} btel) arg0@(Arg info' arg) args = do
       let name = bareNameOf arg
           my   = bareNameOf dom
-          tel  = absBody btel in
+          tel  = absBody btel
       case (argInfoHiding info, argInfoHiding info', name) of
-        (Instance{}, NotHidden, _)        -> check tel args0
-        (Instance{}, Hidden, _)           -> check tel args0
-        (Instance{}, Instance{}, Nothing) -> check tel args
+        (Instance{}, NotHidden, _)        -> check1 tel arg0 args
+        (Instance{}, Hidden, _)           -> check1 tel arg0 args
+        (Instance{}, Instance{}, Nothing) -> check  tel args
         (Instance{}, Instance{}, Just x)
-          | Just x == my                  -> check tel args
-          | otherwise                     -> check tel args0
-        (Hidden, NotHidden, _)            -> check tel args0
-        (Hidden, Instance{}, _)           -> check tel args0
-        (Hidden, Hidden, Nothing)         -> check tel args
+          | Just x == my                  -> check  tel args
+          | otherwise                     -> check1 tel arg0 args
+        (Hidden, NotHidden, _)            -> check1 tel arg0 args
+        (Hidden, Instance{}, _)           -> check1 tel arg0 args
+        (Hidden, Hidden, Nothing)         -> check  tel args
         (Hidden, Hidden, Just x)
-          | Just x == my                  -> check tel args
-          | otherwise                     -> check tel args0
-        (NotHidden, NotHidden, _)         -> check tel args
+          | Just x == my                  -> check  tel args
+          | otherwise                     -> check1 tel arg0 args
+        (NotHidden, NotHidden, _)         -> check  tel args
         (NotHidden, Hidden, _)            -> bad
         (NotHidden, Instance{}, _)        -> bad
 

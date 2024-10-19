@@ -4,16 +4,13 @@ module Agda.TypeChecking.Monad.Builtin
   , module Agda.Syntax.Builtin  -- The names are defined here.
   ) where
 
-import qualified Control.Monad.Fail as Fail
-
-import Control.Monad                ( liftM2, void )
-import Control.Monad.Except
+import Control.Monad.Except         ( MonadError(..), ExceptT )
 import Control.Monad.IO.Class       ( MonadIO(..) )
-import Control.Monad.Reader
-import Control.Monad.State
-import Control.Monad.Trans.Identity (IdentityT)
+import Control.Monad.Reader         ( ReaderT )
+import Control.Monad.State          ( StateT )
+import Control.Monad.Trans.Identity ( IdentityT )
 import Control.Monad.Trans.Maybe
-import Control.Monad.Writer
+import Control.Monad.Writer         ( WriterT )
 
 import Data.Function ( on )
 import qualified Data.Map as Map
@@ -74,7 +71,7 @@ instance MonadIO m => HasBuiltins (TCMT m) where
 newtype BuiltinAccess a = BuiltinAccess { unBuiltinAccess :: TCState -> a }
   deriving (Functor, Applicative, Monad)
 
-instance Fail.MonadFail BuiltinAccess where
+instance MonadFail BuiltinAccess where
   fail msg = BuiltinAccess $ \_ -> error msg
 
 instance HasBuiltins BuiltinAccess where
@@ -109,7 +106,7 @@ litType = \case
   where
     el t = El (mkType 0) t
 
-setBuiltinThings :: BuiltinThings PrimFun -> TCM ()
+setBuiltinThings :: BuiltinThings -> TCM ()
 setBuiltinThings b = stLocalBuiltins `setTCLens` b
 
 bindBuiltinName :: BuiltinId -> Term -> TCM ()
@@ -314,6 +311,7 @@ primInteger, primIntegerPos, primIntegerNegSuc,
     primAgdaTCMWorkOnTypes,
     primAgdaTCMRunSpeculative,
     primAgdaTCMExec,
+    primAgdaTCMCheckFromString,
     primAgdaTCMGetInstances,
     primAgdaTCMSolveInstances,
     primAgdaTCMPragmaForeign,
@@ -532,6 +530,7 @@ primAgdaTCMNoConstraints              = getBuiltin builtinAgdaTCMNoConstraints
 primAgdaTCMWorkOnTypes                = getBuiltin builtinAgdaTCMWorkOnTypes
 primAgdaTCMRunSpeculative             = getBuiltin builtinAgdaTCMRunSpeculative
 primAgdaTCMExec                       = getBuiltin builtinAgdaTCMExec
+primAgdaTCMCheckFromString            = getBuiltin builtinAgdaTCMCheckFromString
 primAgdaTCMGetInstances               = getBuiltin builtinAgdaTCMGetInstances
 primAgdaTCMSolveInstances             = getBuiltin builtinAgdaTCMSolveInstances
 primAgdaTCMPragmaForeign              = getBuiltin builtinAgdaTCMPragmaForeign

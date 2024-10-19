@@ -4,11 +4,10 @@ module Agda.TypeChecking.Records where
 
 import Prelude hiding (null)
 
-import Control.Monad
-import Control.Monad.Except
-import Control.Monad.Trans.Maybe
-import Control.Monad.Writer
-import Control.Applicative
+import Control.Applicative        ( (<|>) )
+import Control.Monad.Except       ( MonadError )
+import Control.Monad.Trans.Maybe  ( MaybeT(MaybeT), runMaybeT )
+import Control.Monad.Writer       ( Writer, runWriter, tell )
 
 import Data.Bifunctor
 import qualified Data.List as List
@@ -21,6 +20,7 @@ import Agda.Syntax.Common
 import qualified Agda.Syntax.Concrete.Name as C
 import Agda.Syntax.Concrete (FieldAssignment'(..))
 import Agda.Syntax.Abstract.Name
+import qualified Agda.Syntax.Info as A
 import Agda.Syntax.Internal.MetaVars (unblockOnAnyMetaIn)
 import Agda.Syntax.Internal as I
 import Agda.Syntax.Position
@@ -43,6 +43,7 @@ import Agda.Utils.Function (applyWhen)
 import Agda.Utils.Functor (for, ($>), (<&>))
 import Agda.Utils.Lens
 import Agda.Utils.List
+import qualified Agda.Utils.List1 as List1
 import Agda.Utils.Maybe
 import Agda.Utils.Monad
 import Agda.Utils.Null
@@ -61,26 +62,28 @@ mkCon h info args = Con h info (map Apply args)
 -- | Order the fields of a record construction.
 orderFields
   :: forall a . HasRange a
-  => QName             -- ^ Name of record type (for error message).
+  => A.RecStyle        -- ^ Braces or where
+  -> QName             -- ^ Name of record type (for error message).
   -> (Arg C.Name -> a) -- ^ How to fill a missing field.
   -> [Arg C.Name]      -- ^ Field names of the record type.
   -> [(C.Name, a)]     -- ^ Provided fields with content in the record expression.
   -> Writer [RecordFieldWarning] [a]           -- ^ Content arranged in official order.
-orderFields r fill axs fs = do
+orderFields style r fill axs fs = do
   -- reportSDoc "tc.record" 30 $ vcat
   --   [ "orderFields"
   --   , "  official fields: " <+> sep (map pretty xs)
   --   , "  provided fields: " <+> sep (map pretty ys)
   --   ]
-  unlessNull alien     $ warn $ W.TooManyFields r missing
-  unlessNull duplicate $ warn $ W.DuplicateFields
+  unless (style == A.RecStyleWhere) $   -- Don't warn about unknown fields for `record where`
+    List1.unlessNull alien   $ warn $ W.TooManyFields r missing
+  List1.unlessNull duplicate $ warn $ W.DuplicateFields
   return $ for axs $ \ ax -> fromMaybe (fill ax) $ lookup (unArg ax) uniq
   where
     (uniq, duplicate) = nubAndDuplicatesOn fst fs   -- separating duplicate fields
     xs        = map unArg axs                       -- official fields (accord. record type)
     missing   = filter (not . hasElem (map fst fs)) xs  -- missing  fields
     alien     = filter (not . hasElem xs . fst) fs      -- spurious fields
-    warn w    = tell . singleton . w . map (second getRange)
+    warn w    = tell . singleton . w . fmap (second getRange)
 
 -- | Raise generated 'RecordFieldWarning's as warnings.
 warnOnRecordFieldWarnings :: Writer [RecordFieldWarning] a -> TCM a
@@ -101,23 +104,25 @@ failOnRecordFieldWarnings comp = do
 --   Raise generated 'RecordFieldWarning's as warnings.
 orderFieldsWarn
   :: forall a . HasRange a
-  => QName             -- ^ Name of record type (for error message).
+  => A.RecStyle        -- ^ Braces or where
+  -> QName             -- ^ Name of record type (for error message).
   -> (Arg C.Name -> a) -- ^ How to fill a missing field.
   -> [Arg C.Name]      -- ^ Field names of the record type.
   -> [(C.Name, a)]     -- ^ Provided fields with content in the record expression.
   -> TCM [a]           -- ^ Content arranged in official order.
-orderFieldsWarn r fill axs fs = warnOnRecordFieldWarnings $ orderFields r fill axs fs
+orderFieldsWarn style r fill axs fs = warnOnRecordFieldWarnings $ orderFields style r fill axs fs
 
 -- | Order the fields of a record construction.
 --   Raise generated 'RecordFieldWarning's as errors.
 orderFieldsFail
   :: forall a . HasRange a
-  => QName             -- ^ Name of record type (for error message).
+  => A.RecStyle        -- ^ Braces or where
+  -> QName             -- ^ Name of record type (for error message).
   -> (Arg C.Name -> a) -- ^ How to fill a missing field.
   -> [Arg C.Name]      -- ^ Field names of the record type.
   -> [(C.Name, a)]     -- ^ Provided fields with content in the record expression.
   -> TCM [a]           -- ^ Content arranged in official order.
-orderFieldsFail r fill axs fs = failOnRecordFieldWarnings $ orderFields r fill axs fs
+orderFieldsFail style r fill axs fs = failOnRecordFieldWarnings $ orderFields style r fill axs fs
 
 -- | A record field assignment @record{xs = es}@ might not mention all
 --   visible fields.  @insertMissingFields@ inserts placeholders for
@@ -125,13 +130,14 @@ orderFieldsFail r fill axs fs = failOnRecordFieldWarnings $ orderFields r fill a
 --   of the fields in the record declaration.
 insertMissingFields
   :: forall a . HasRange a
-  => QName                -- ^ Name of record type (for error reporting).
+  => A.RecStyle           -- ^ Braces or where
+  -> QName                -- ^ Name of record type (for error reporting).
   -> (C.Name -> a)        -- ^ Function to generate a placeholder for missing visible field.
   -> [FieldAssignment' a] -- ^ Given fields.
   -> [Arg C.Name]         -- ^ All record field names with 'ArgInfo'.
   -> Writer [RecordFieldWarning] [NamedArg a]
        -- ^ Given fields enriched by placeholders for missing explicit fields.
-insertMissingFields r placeholder fs axs = do
+insertMissingFields style r placeholder fs axs = do
   -- Compute the list of given fields, decorated with the ArgInfo from the record def.
   let arg x e = caseMaybe (List.find ((x ==) . unArg) axs) (defaultNamedArg e) $ \ a ->
         nameIfHidden a e <$ a
@@ -140,7 +146,7 @@ insertMissingFields r placeholder fs axs = do
   -- Omitted explicit fields are filled in with placeholders.
   -- Omitted implicit or instance fields
   -- are still left out and inserted later by checkArguments_.
-  catMaybes <$> orderFields r fill axs givenFields
+  catMaybes <$> orderFields style r fill axs givenFields
   where
     fill :: Arg C.Name -> Maybe (NamedArg a)
     fill ax
@@ -160,13 +166,14 @@ insertMissingFields r placeholder fs axs = do
 --   of the fields in the record declaration.
 insertMissingFieldsWarn
   :: forall a . HasRange a
-  => QName                -- ^ Name of record type (for error reporting).
+  => A.RecStyle           -- ^ Braces or where
+  -> QName                -- ^ Name of record type (for error reporting).
   -> (C.Name -> a)        -- ^ Function to generate a placeholder for missing visible field.
   -> [FieldAssignment' a] -- ^ Given fields.
   -> [Arg C.Name]         -- ^ All record field names with 'ArgInfo'.
   -> TCM [NamedArg a]     -- ^ Given fields enriched by placeholders for missing explicit fields.
-insertMissingFieldsWarn r placeholder fs axs =
-  warnOnRecordFieldWarnings $ insertMissingFields r placeholder fs axs
+insertMissingFieldsWarn style r placeholder fs axs =
+  warnOnRecordFieldWarnings $ insertMissingFields style r placeholder fs axs
 
 -- | A record field assignment @record{xs = es}@ might not mention all
 --   visible fields.  @insertMissingFields@ inserts placeholders for
@@ -174,13 +181,14 @@ insertMissingFieldsWarn r placeholder fs axs =
 --   of the fields in the record declaration.
 insertMissingFieldsFail
   :: forall a . HasRange a
-  => QName                -- ^ Name of record type (for error reporting).
+  => A.RecStyle           -- ^ Braces or where
+  -> QName                -- ^ Name of record type (for error reporting).
   -> (C.Name -> a)        -- ^ Function to generate a placeholder for missing visible field.
   -> [FieldAssignment' a] -- ^ Given fields.
   -> [Arg C.Name]         -- ^ All record field names with 'ArgInfo'.
   -> TCM [NamedArg a]     -- ^ Given fields enriched by placeholders for missing explicit fields.
-insertMissingFieldsFail r placeholder fs axs =
-  failOnRecordFieldWarnings $ insertMissingFields r placeholder fs axs
+insertMissingFieldsFail style r placeholder fs axs =
+  failOnRecordFieldWarnings $ insertMissingFields style r placeholder fs axs
 
 ---------------------------------------------------------------------------
 -- * Query information about records from signature
@@ -400,7 +408,7 @@ data ElimType
 instance PrettyTCM ElimType where
   prettyTCM (ArgT a)    = prettyTCM a
   prettyTCM (ProjT a b) =
-    "." TCM.<> parens (prettyTCM a <+> "->" <+> prettyTCM b)
+    "." <> parens (prettyTCM a <+> "->" <+> prettyTCM b)
 
 -- | Given a head and its type, compute the types of the eliminations.
 
@@ -447,17 +455,14 @@ eliminateType' err hd t (e : es) = case e of
 isEtaRecord :: HasConstInfo m => QName -> m Bool
 isEtaRecord r = do
   isRecord r >>= \case
-    Nothing -> return False
-    Just r -> isEtaRecordDef r
-
-isEtaRecordDef :: HasConstInfo m => RecordData -> m Bool
-isEtaRecordDef r
-  | _recEtaEquality r /= YesEta = return False
-  | otherwise = do
+    Just r | isEtaRecordDef r -> do
      constructorQ <- getQuantity <$> getConstInfo (conName (_recConHead r))
      currentQ     <- viewTC eQuantity
      return $ constructorQ `moreQuantity` currentQ
+    _ -> return False
 
+isEtaRecordDef :: RecordData -> Bool
+isEtaRecordDef r = _recEtaEquality r == YesEta
 
 {-# SPECIALIZE isEtaCon :: QName -> TCM Bool #-}
 isEtaCon :: HasConstInfo m => QName -> m Bool
@@ -467,7 +472,7 @@ isEtaCon c = isJust <$> isEtaRecordConstructor c
 isEtaOrCoinductiveRecordConstructor :: HasConstInfo m => QName -> m Bool
 isEtaOrCoinductiveRecordConstructor c =
   caseMaybeM (isRecordConstructor c) (return False) $ \ (_, def) ->
-    isEtaRecordDef def `or2M`
+    pure (isEtaRecordDef def) `or2M`
       return (_recInduction def /= Just Inductive)
       -- If in doubt about coinductivity, then yes.
 
@@ -500,7 +505,7 @@ isRecordConstructor c = getConstInfo' c >>= \case
 isEtaRecordConstructor :: HasConstInfo m => QName -> m (Maybe (QName, RecordData))
 isEtaRecordConstructor c = isRecordConstructor c >>= \case
   Nothing -> return Nothing
-  Just (d, def) -> ifM (isEtaRecordDef def) (return $ Just (d, def)) (return Nothing)
+  Just (d, def) -> if isEtaRecordDef def then return $ Just (d, def) else return Nothing
 
 -- | Turn off eta for unguarded recursive records.
 --   Projections do not preserve guardedness.
@@ -576,7 +581,7 @@ expandRecordVar i gamma0 = do
           " since its type " <+> prettyTCM a <+>
           " is not a record type"
         return Nothing
-  caseMaybeM (isRecordType a) failure $ \ (r, pars, def) -> isEtaRecordDef def >>= \case
+  caseMaybeM (isRecordType a) failure $ \ (r, pars, def) -> case isEtaRecordDef def of
     False -> return Nothing
     True  -> Just <$> do
       -- Get the record fields @Γ₁ ⊢ tel@ (@tel = Γ'@).
@@ -928,7 +933,7 @@ isSingletonType' regardIrrelevance t rs = do
         record :: m (Maybe Term)
         record = runMaybeT $ do
           (r, ps, def) <- MaybeT $ isRecordType t
-          guardM $ isEtaRecordDef def
+          guard $ isEtaRecordDef def
           abstract tel <$> MaybeT (isSingletonRecord' regardIrrelevance r ps rs)
 
         -- Slightly harder case: η for Sub {level} tA phi elt.

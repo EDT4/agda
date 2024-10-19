@@ -468,55 +468,59 @@ collectComponents opts costs ii mDefName whereNames metaId = do
       Nothing -> True
       Just defName -> defName /= qname && fmap ((defName `elem`)) (funMutual f) /= Just True
 
-    go comps qname = do
-      info <- getConstInfo qname
-      typ <- typeOfConst qname
-      scope <- getScope
-      let addLevel  = qnameToComponent (costLevel   costs) qname <&> \ comp -> comps{hintLevel     = comp : hintLevel  comps}
-          addAxiom  = qnameToComponent (costAxiom   costs) qname <&> \ comp -> comps{hintAxioms    = comp : hintAxioms comps}
-          addThisFn = qnameToComponent (costRecCall costs) qname <&> \ comp -> comps{hintThisFn    = Just comp{ compRec = True }}
-          addFn     = qnameToComponent (costFn      costs) qname <&> \ comp -> comps{hintFns       = comp : hintFns comps}
-          addData   = qnameToComponent (costSet     costs) qname <&> \ comp -> comps{hintDataTypes = comp : hintDataTypes comps}
-      case theDef info of
-        Axiom{} | isToLevel typ    -> addLevel
-                | shouldKeep scope -> addAxiom
-                | otherwise        -> return comps
-        -- TODO: Check if we want to use these
-        DataOrRecSig{}   -> return comps
-        GeneralizableVar -> return comps
-        AbstractDefn{}   -> return comps
-        -- If the function is in the same mutual block, do not include it.
-        f@Function{}
-          | Just qname == mDefName                  -> addThisFn
-          | isToLevel typ && isNotMutual qname f    -> addLevel
-          | isNotMutual qname f && shouldKeep scope -> addFn
-          | otherwise                               -> return comps
-        Datatype{} -> addData
-        Record{} -> do
-          projections <- mapM (qnameToComponent (costSpeculateProj costs)) =<< getRecordFields qname
-          comp <- qnameToComponent (costSet costs) qname
-          return comps{ hintRecordTypes = comp : hintRecordTypes comps
-                      , hintProjections = projections ++ hintProjections comps }
-        -- We look up constructors when we need them
-        Constructor{} -> return comps
-        -- TODO: special treatment for primitives?
-        Primitive{} | isToLevel typ    -> addLevel
-                    | shouldKeep scope -> addFn
-                    | otherwise        -> return comps
-        PrimitiveSort{} -> return comps
-      where
-        shouldKeep scope = or
-          [ qname `elem` explicitHints
-          , qname `elem` whereNames
-          , case hintMode of
-              Unqualified -> Scope.isNameInScopeUnqualified qname scope
-              AllModules  -> True
-              Module      -> Just (qnameModule qname) == mThisModule
-              NoHints     -> False
-          ]
+    go comps qname = go' comps qname =<< getConstInfo qname
 
-        -- TODO: There is probably a better way of finding the module name
-        mThisModule = qnameModule <$> mDefName
+    go' comps qname info
+      | isExtendedLambda (theDef info) = return comps    -- We can't use pattern lambdas as components
+      | isWithFunction   (theDef info) = return comps    -- or with functions
+      | otherwise = do
+        typ <- typeOfConst qname
+        scope <- getScope
+        let addLevel  = qnameToComponent (costLevel   costs) qname <&> \ comp -> comps{hintLevel     = comp : hintLevel  comps}
+            addAxiom  = qnameToComponent (costAxiom   costs) qname <&> \ comp -> comps{hintAxioms    = comp : hintAxioms comps}
+            addThisFn = qnameToComponent (costRecCall costs) qname <&> \ comp -> comps{hintThisFn    = Just comp{ compRec = True }}
+            addFn     = qnameToComponent (costFn      costs) qname <&> \ comp -> comps{hintFns       = comp : hintFns comps}
+            addData   = qnameToComponent (costSet     costs) qname <&> \ comp -> comps{hintDataTypes = comp : hintDataTypes comps}
+        case theDef info of
+          Axiom{} | isToLevel typ    -> addLevel
+                  | shouldKeep scope -> addAxiom
+                  | otherwise        -> return comps
+          -- TODO: Check if we want to use these
+          DataOrRecSig{}     -> return comps
+          GeneralizableVar{} -> return comps
+          AbstractDefn{}     -> return comps
+          -- If the function is in the same mutual block, do not include it.
+          f@Function{}
+            | Just qname == mDefName                  -> addThisFn
+            | isToLevel typ && isNotMutual qname f    -> addLevel
+            | isNotMutual qname f && shouldKeep scope -> addFn
+            | otherwise                               -> return comps
+          Datatype{} -> addData
+          Record{} -> do
+            projections <- mapM (qnameToComponent (costSpeculateProj costs)) =<< getRecordFields qname
+            comp <- qnameToComponent (costSet costs) qname
+            return comps{ hintRecordTypes = comp : hintRecordTypes comps
+                        , hintProjections = projections ++ hintProjections comps }
+          -- We look up constructors when we need them
+          Constructor{} -> return comps
+          -- TODO: special treatment for primitives?
+          Primitive{} | isToLevel typ    -> addLevel
+                      | shouldKeep scope -> addFn
+                      | otherwise        -> return comps
+          PrimitiveSort{} -> return comps
+        where
+          shouldKeep scope = or
+            [ qname `elem` explicitHints
+            , qname `elem` whereNames
+            , case hintMode of
+                Unqualified -> Scope.isNameInScopeUnqualified qname scope
+                AllModules  -> True
+                Module      -> Just (qnameModule qname) == mThisModule
+                NoHints     -> False
+            ]
+
+          -- TODO: There is probably a better way of finding the module name
+          mThisModule = qnameModule <$> mDefName
 
     -- NOTE: We do not reduce the type before checking, so some user definitions
     -- will not be included here.
@@ -539,16 +543,16 @@ qnameToComponent cost qname = do
   mParams <- freeVarsToApply qname
   let def = (Def qname [] `apply` mParams, 0)
       (term, pars) = case theDef info of
-        c@Constructor{}  -> (Con (conSrcCon c) ConOCon [], conPars c - length mParams)
-        Axiom{}          -> def
-        GeneralizableVar -> def
-        Function{}       -> def
-        Datatype{}       -> def
-        Record{}         -> def
-        Primitive{}      -> def
-        PrimitiveSort{}  -> def
-        DataOrRecSig{}   -> __IMPOSSIBLE__
-        AbstractDefn{}   -> __IMPOSSIBLE__
+        c@Constructor{}    -> (Con (conSrcCon c) ConOCon [], conPars c - length mParams)
+        Axiom{}            -> def
+        GeneralizableVar{} -> def
+        Function{}         -> def
+        Datatype{}         -> def
+        Record{}           -> def
+        Primitive{}        -> def
+        PrimitiveSort{}    -> def
+        DataOrRecSig{}     -> __IMPOSSIBLE__
+        AbstractDefn{}     -> __IMPOSSIBLE__
   newComponentQ [] cost qname pars term typ
 
 getEverythingInScope :: MonadTCM tcm => MetaVariable -> tcm [QName]
@@ -613,7 +617,6 @@ collectLHSVars ii = do
     IPNoClause -> makeOpen []
     IPClause{ipcQName = fnName, ipcClauseNo = clauseNr} -> do
       info <- getConstInfo fnName
-      typ <- typeOfConst fnName
       parCount <- liftTCM getCurrentModuleFreeVars
       case theDef info of
         fnDef@Function{} -> do
@@ -1233,24 +1236,24 @@ tryDataRecord goal goalType branch = withBranchAndGoal branch goal $ do
       primitive@Primitive{} -> do
         return []
       -- TODO: Better way of checking that type is Level
-      d@Axiom{}
+      Axiom{}
         | P.prettyShow qname == "Agda.Primitive.Level" -> do
             tryLevel
         | otherwise -> do
         return []
-      d@DataOrRecSig{} -> do
+      DataOrRecSig{} -> do
         return []
-      d@GeneralizableVar -> do
+      GeneralizableVar{} -> do
         return []
-      d@AbstractDefn{} -> do
+      AbstractDefn{} -> do
         return []
-      d@Function{} -> do
+      Function{} -> do
         return []
-      d@Constructor{} -> do
+      Constructor{} -> do
         return []
-      d@PrimitiveSort{} -> do
+      PrimitiveSort{} -> do
         return []
-    sort@(Sort (Type level)) -> do
+    Sort (Type level) -> do
       trySet level
     Sort sort -> do
       return []

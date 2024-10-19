@@ -28,6 +28,7 @@ import Data.IntSet (IntSet)
 import qualified Data.IntSet as IntSet
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
+import Data.Text (Text)
 
 import GHC.Generics (Generic)
 
@@ -49,8 +50,12 @@ import Agda.Utils.POMonoid
 
 import Agda.Utils.Impossible
 
+-- | Number @>= 0@.
 type Nat    = Int
 type Arity  = Nat
+
+-- | Number @>= 1@.
+type Nat1   = Nat
 
 ---------------------------------------------------------------------------
 -- * IsMain
@@ -73,7 +78,7 @@ instance Monoid IsMain where
 -- * File
 ---------------------------------------------------------------------------
 
-data FileType = AgdaFileType | MdFileType | RstFileType | TexFileType | OrgFileType | TypstFileType
+data FileType = AgdaFileType | MdFileType | RstFileType | TexFileType | OrgFileType | TypstFileType | TreeFileType
   deriving (Eq, Ord, Show, Generic)
 
 instance Pretty FileType where
@@ -84,6 +89,7 @@ instance Pretty FileType where
     TexFileType  -> "LaTeX"
     OrgFileType  -> "org-mode"
     TypstFileType -> "Typst"
+    TreeFileType -> "Forester"
 
 instance NFData FileType
 
@@ -119,6 +125,43 @@ instance KillRange Language where
 instance NFData Language
 
 ---------------------------------------------------------------------------
+-- * Backends
+---------------------------------------------------------------------------
+
+type BackendName = Text
+
+---------------------------------------------------------------------------
+-- * Some enums
+---------------------------------------------------------------------------
+
+-- | Distinguish constructors from pattern synonyms.
+
+data ConstructorOrPatternSynonym = IsConstructor | IsPatternSynonym
+  deriving (Show, Generic, Enum, Bounded)
+
+instance Pretty ConstructorOrPatternSynonym where
+  pretty = \case
+    IsConstructor    -> "constructor"
+    IsPatternSynonym -> "pattern synonym"
+
+instance NFData ConstructorOrPatternSynonym
+
+-- | Distinguish parsing a DISPLAY pragma from an ordinary left hand side.
+
+data DisplayLHS = YesDisplayLHS | NoDisplayLHS
+  deriving (Eq, Show, Generic, Enum, Bounded)
+
+instance Boolean DisplayLHS where
+  fromBool = \case
+    True -> YesDisplayLHS
+    False -> NoDisplayLHS
+
+instance IsBool DisplayLHS where
+  toBool = \case
+    YesDisplayLHS -> True
+    NoDisplayLHS -> False
+
+---------------------------------------------------------------------------
 -- * Record Directives
 ---------------------------------------------------------------------------
 
@@ -126,16 +169,16 @@ data RecordDirectives' a = RecordDirectives
   { recInductive   :: Maybe (Ranged Induction)
   , recHasEta      :: Maybe (Ranged HasEta0)
   , recPattern     :: Maybe Range
-  , recConstructor :: Maybe a
+  , recConstructor :: a
   , recModParams   :: Maybe(Ranged ModParams)
   , recModSelf     :: Maybe(Ranged ModSelf)
   } deriving (Functor, Show, Eq, Foldable, Traversable)
 
-instance Null (RecordDirectives' a) where
+instance Null a => Null (RecordDirectives' a) where
   empty = emptyRecordDirectives
   null (RecordDirectives a b c d e f) = and [null a, null b, null c, null d , null e , null f]
 
-emptyRecordDirectives :: RecordDirectives' a
+emptyRecordDirectives :: Null a => RecordDirectives' a
 emptyRecordDirectives = RecordDirectives empty empty empty empty empty empty
 
 instance HasRange a => HasRange (RecordDirectives' a) where
@@ -660,6 +703,10 @@ sameModality :: (LensModality a, LensModality b) => a -> b -> Bool
 sameModality x y = case (getModality x , getModality y) of
   (Modality r q c , Modality r' q' c') -> sameRelevance r r' && sameQuantity q q' && sameCohesion c c'
 
+instance Null Modality where
+  empty = defaultModality
+  null (Modality r q c) = and [ null r, null q, null c ]
+
 -- boilerplate instances
 
 instance HasRange Modality where
@@ -998,6 +1045,10 @@ unitQuantity = Quantityω mempty
 -- | Absorptive element is ω.
 topQuantity :: Quantity
 topQuantity = Quantityω mempty
+
+instance Null Quantity where
+  empty = defaultQuantity
+  null = hasQuantityω
 
 -- | @m `moreUsableQuantity` m'@ means that an @m@ can be used
 --   where ever an @m'@ is required.
@@ -1577,6 +1628,10 @@ topRelevance = relevant
 defaultRelevance :: Relevance
 defaultRelevance = unitRelevance
 
+instance Null Relevance where
+  empty = defaultRelevance
+  null = isRelevant
+
 -- | Irrelevant function arguments may appear non-strictly in the codomain type.
 irrelevantToShapeIrrelevant :: Relevance -> Relevance
 irrelevantToShapeIrrelevant Irrelevant{} = shapeIrrelevant
@@ -1610,6 +1665,10 @@ instance KillRange Annotation where
 
 defaultAnnotation :: Annotation
 defaultAnnotation = Annotation defaultLock
+
+instance Null Annotation where
+  empty = defaultAnnotation
+  null (Annotation lock) = null lock
 
 instance NFData Annotation where
   rnf (Annotation l) = rnf l
@@ -1657,6 +1716,9 @@ data Lock
 
 defaultLock :: Lock
 defaultLock = IsNotLock
+
+instance Null Lock where
+  empty = defaultLock
 
 instance NFData Lock where
   rnf IsNotLock          = ()
@@ -1860,6 +1922,10 @@ topCohesion = Flat
 defaultCohesion :: Cohesion
 defaultCohesion = unitCohesion
 
+instance Null Cohesion where
+  empty = defaultCohesion
+  null = isContinuous
+
 ---------------------------------------------------------------------------
 -- * Origin of arguments (user-written, inserted or reflected)
 ---------------------------------------------------------------------------
@@ -1942,6 +2008,22 @@ instance LensOrigin (WithOrigin a) where
   getOrigin   (WithOrigin h _) = h
   setOrigin h (WithOrigin _ a) = WithOrigin h a
   mapOrigin f (WithOrigin h a) = WithOrigin (f h) a
+
+------------------------------------------------------------------------
+-- Origin of binder names
+------------------------------------------------------------------------
+
+data BinderNameOrigin
+  = UserBinderName
+  | InsertedBinderName
+  deriving (Show, Eq, Generic)
+
+instance KillRange BinderNameOrigin where
+  killRange = \case
+    InsertedBinderName -> InsertedBinderName
+    UserBinderName     -> UserBinderName
+
+instance NFData BinderNameOrigin
 
 -----------------------------------------------------------------------------
 -- * Free variable annotations
@@ -2084,6 +2166,10 @@ instance LensCohesion ArgInfo where
   getCohesion = getCohesionMod
   setCohesion = setCohesionMod
   mapCohesion = mapCohesionMod
+
+instance Null ArgInfo where
+  empty = defaultArgInfo
+  null (ArgInfo h m _o _fv ann) = and [ null h, null m, null ann ]
 
 defaultArgInfo :: ArgInfo
 defaultArgInfo =  ArgInfo
@@ -2550,10 +2636,11 @@ type RString = Ranged RawName
 
 -- | Where does the 'ConP' or 'Con' come from?
 data ConOrigin
-  = ConOSystem  -- ^ Inserted by system or expanded from an implicit pattern.
-  | ConOCon     -- ^ User wrote a constructor (pattern).
-  | ConORec     -- ^ User wrote a record (pattern).
-  | ConOSplit   -- ^ Generated by interactive case splitting.
+  = ConOSystem   -- ^ Inserted by system or expanded from an implicit pattern.
+  | ConOCon      -- ^ User wrote a constructor (pattern).
+  | ConORec      -- ^ User wrote a record (pattern).
+  | ConORecWhere -- ^ User wrote a `record where`
+  | ConOSplit    -- ^ Generated by interactive case splitting.
   deriving (Show, Eq, Ord, Enum, Bounded, Generic)
 
 instance NFData ConOrigin
@@ -3049,6 +3136,7 @@ class LensFixity' a where
 
 instance LensFixity' Fixity' where
   lensFixity' = id
+
 ---------------------------------------------------------------------------
 -- * Import directive
 ---------------------------------------------------------------------------

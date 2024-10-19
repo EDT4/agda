@@ -16,7 +16,7 @@ COVERED=$TMPDIR/covered-errors.txt
 # Those are printed by `agda --help=error` at line beginnings and follow
 # the camel-case convention, with at least two capital letters.
 #
-${AGDA_BIN:-agda} --help=error | sed -nr 's/^([A-Z][a-z]+[A-Z][A-Za-z\.]+).*/\1/p' | sort > $HELPERRORS
+${AGDA_BIN:-agda} --help=error | sed -nr 's/^([A-Z][a-z\.]+[A-Z][A-Za-z\.]+).*/\1/p' | sort > $HELPERRORS
 
 # Generic errors we do not need to cover by the testsuite.
 #
@@ -24,15 +24,6 @@ cat > $ERRORS <<EOF
 CustomBackendError
 InternalError
 NonFatalErrors
-EOF
-
-# Errors that are transformed to other errors and thus not printed.
-#
-cat >> $ERRORS <<EOF
-MetaCannotDependOn
-MetaErasedSolution
-MetaIrrelevantSolution
-MetaOccursInItself
 EOF
 
 # Errors of the double checker which should be impossible.
@@ -48,11 +39,15 @@ EOF
 #
 cat >> $ERRORS <<EOF
 ContradictorySizeConstraint
+Exec.ExeNotExecutable
+Exec.ExeNotFound
+Exec.ExeNotTrusted
 FunctionTypeInSizeUniv
 GeneralizeCyclicDependency
 SplitError.CannotCreateMissingClause
 SplitError.CosplitNoTarget
 SplitError.GenericSplitError
+Unquote.BlockedOnMeta
 EOF
 
 # Errors covered by the testsuite.
@@ -65,7 +60,7 @@ FILES=$(find \( -name "*.err" -o -name "*.out" \))
 #
 #    ... error: [$NAME]
 #
-sed --silent --regexp-extended --expression='s/.*error: \[([A-Z][a-z]+[A-Z][A-Za-z\.]+)\].*/\1/p' $FILES | sort | uniq >> $ERRORS
+sed --silent --regexp-extended --expression='s/.*error: \[([A-Z][a-z\.]+[A-Z][A-Za-z\.]+)\].*/\1/p' $FILES | sort | uniq >> $ERRORS
 
 sort $ERRORS | uniq > $COVERED
 
