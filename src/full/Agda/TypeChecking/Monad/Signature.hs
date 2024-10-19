@@ -161,7 +161,9 @@ addConstant q d = do
         return $ mapQuantity (zeroQuantity `composeQuantity`) d
 
   tel <- getContextTelescope
-  let tel' = replaceEmptyName "r" $ killRange $ tel
+  let tel' = replaceEmptyName "r" $ killRange $ case theDef d of
+              Constructor{} -> fmap hideOrKeepInstance tel
+              _ -> tel
   let d' = abstract tel' $ d { defName = q }
   reportSDoc "tc.signature" 60 $ "lambda-lifted definition =" <?> pretty d'
   modifySignature $ updateDefinitions $ HMap.insertWith (+++) q d'
