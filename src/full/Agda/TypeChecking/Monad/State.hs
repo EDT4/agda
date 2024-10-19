@@ -4,20 +4,20 @@ module Agda.TypeChecking.Monad.State where
 
 import qualified Control.Exception as E
 
-import Control.Monad       (void, when)
-import Control.Monad.Trans (MonadIO, liftIO)
-import Control.Exception (evaluate)
-import Control.DeepSeq   (rnf)
+import Control.DeepSeq           (rnf)
+import Control.Exception         (evaluate)
+import Control.Monad.Trans       (MonadIO, liftIO)
+import Control.Monad.Trans.Maybe (MaybeT(MaybeT), runMaybeT)
 
 import Data.Maybe
-
+import qualified Data.HashMap.Strict as HMap
 import qualified Data.Map as Map
-
 import Data.Set (Set)
 import qualified Data.Set as Set
-import qualified Data.HashMap.Strict as HMap
 
 import Agda.Benchmarking
+
+import Agda.Compiler.Backend.Base (pattern Backend, backendName, mayEraseType)
 
 import Agda.Interaction.Response
   (InteractionOutputCallback, Response)
@@ -42,7 +42,7 @@ import Agda.TypeChecking.CompiledClause
 import qualified Agda.Utils.BiMap as BiMap
 import Agda.Utils.Lens
 import qualified Agda.Utils.List1 as List1
-import Agda.Utils.Monad (bracket_)
+import Agda.Utils.Monad
 import Agda.Syntax.Common.Pretty
 import Agda.Utils.Tuple
 
@@ -140,10 +140,6 @@ freshTCM m = do
 -- * Lens for persistent states and its fields
 ---------------------------------------------------------------------------
 
-lensPersistentState :: Lens' TCState PersistentTCState
-lensPersistentState f s =
-  f (stPersistentState s) <&> \ p -> s { stPersistentState = p }
-
 updatePersistentState
   :: (PersistentTCState -> PersistentTCState) -> (TCState -> TCState)
 updatePersistentState f s = s { stPersistentState = f (stPersistentState s) }
@@ -215,13 +211,13 @@ localScope m = do
 -- | Scope error.
 notInScopeError :: C.QName -> TCM a
 notInScopeError x = do
-  printScope "unbound" 5 ""
-  typeError $ NotInScope [x]
+  printScope "unbound" 25 ""
+  typeError $ NotInScope x
 
 notInScopeWarning :: C.QName -> TCM ()
 notInScopeWarning x = do
-  printScope "unbound" 5 ""
-  warning $ NotInScopeW [x]
+  printScope "unbound" 25 ""
+  warning $ NotInScopeW x
 
 -- | Debug print the scope.
 printScope :: String -> Int -> String -> TCM ()
@@ -395,14 +391,9 @@ setTopLevelModule top = do
 currentTopLevelModule ::
   (MonadTCEnv m, ReadTCState m) => m (Maybe TopLevelModuleName)
 currentTopLevelModule = do
-  m <- useR stCurrentModule
-  case m of
+  useR stCurrentModule >>= \case
     Just (_, top) -> return (Just top)
-    Nothing       -> do
-      p <- asksTC envImportPath
-      return $ case p of
-        top : _ -> Just top
-        []      -> Nothing
+    Nothing       -> listToMaybe <$> asksTC envImportPath
 
 -- | Use a different top-level module for a computation. Used when generating
 --   names for imported modules.
@@ -425,8 +416,29 @@ currentModuleNameHash = do
   return h
 
 ---------------------------------------------------------------------------
--- * Foreign code
+-- * Backends and foreign code
 ---------------------------------------------------------------------------
+
+-- | Look for a backend of the given name.
+
+lookupBackend :: BackendName -> TCM (Maybe Backend)
+lookupBackend name = useTC stBackends <&> \ backends ->
+  listToMaybe [ b | b@(Backend b') <- backends, backendName b' == name ]
+
+-- | Get the currently active backend (if any).
+
+activeBackend :: TCM (Maybe Backend)
+activeBackend = runMaybeT $ do
+  bname <- MaybeT $ asksTC envActiveBackendName
+  lift $ fromMaybe __IMPOSSIBLE__ <$> lookupBackend bname
+
+-- | Ask the active backend whether a type may be erased.
+--   See issue #3732.
+
+activeBackendMayEraseType :: QName -> TCM Bool
+activeBackendMayEraseType q = do
+  Backend b <- fromMaybe __IMPOSSIBLE__ <$> activeBackend
+  mayEraseType b q
 
 addForeignCode :: BackendName -> String -> TCM ()
 addForeignCode backend code = do

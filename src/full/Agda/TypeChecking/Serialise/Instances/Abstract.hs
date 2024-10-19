@@ -149,16 +149,18 @@ instance EmbPrj KindOfName where
 
 instance EmbPrj BindingSource where
   icod_ = \case
-    LambdaBound    -> pure 0
-    PatternBound _ -> pure 1
-    LetBound       -> pure 2
-    WithBound      -> pure 3
+    LambdaBound     -> pure 0
+    PatternBound _  -> pure 1
+    LetBound        -> pure 2
+    WithBound       -> pure 3
+    MacroBound      -> pure 4
 
   value = \case
     0 -> pure LambdaBound
     1 -> pure $ PatternBound empty
     2 -> pure LetBound
     3 -> pure WithBound
+    4 -> pure MacroBound
     _ -> malformed
 
 instance EmbPrj LocalVar where
@@ -248,8 +250,8 @@ instance EmbPrj Precedence where
     valu _         = malformed
 
 instance EmbPrj ScopeInfo where
-  icod_ (ScopeInfo a b c d e f g h i j) = icodeN' (\ a b c d e -> ScopeInfo a b c d e f g h i j) a b c d e
+  icod_ (ScopeInfo a b c d e f g h i j k) = icodeN' (\ a b c d e -> ScopeInfo a b c d e f g h i j k) a b c d e
 
-  value = valueN (\ a b c d e -> ScopeInfo a b c d e Map.empty Map.empty Set.empty Map.empty Map.empty)
+  value = valueN (\ a b c d e -> ScopeInfo a b c d e Map.empty Map.empty Set.empty Map.empty Map.empty Map.empty)
 
 instance EmbPrj NameOrModule

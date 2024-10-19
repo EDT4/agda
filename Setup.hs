@@ -1,7 +1,11 @@
+{-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-import Data.List
-import Data.Maybe
+import Data.Functor ( (<&>) )
+import Data.List    ( intercalate )
+import Data.Maybe   ( catMaybes )
 
 import Distribution.Simple
 import Distribution.Simple.LocalBuildInfo
@@ -11,7 +15,7 @@ import Distribution.PackageDescription
 import Distribution.System ( buildPlatform )
 
 import System.FilePath
-import System.Directory (makeAbsolute, removeFile)
+import System.Directory (doesFileExist, makeAbsolute, removeFile)
 import System.Environment (getEnvironment)
 import System.Process
 import System.Exit
@@ -42,11 +46,13 @@ copyHook' :: PackageDescription -> LocalBuildInfo -> UserHooks -> CopyFlags -> I
 copyHook' pd lbi hooks flags = do
   -- Copy library and executable etc.
   copyHook simpleUserHooks pd lbi hooks flags
-  unless (skipInterfaces lbi) $ do
+  if wantInterfaces flags && not (skipInterfaces lbi) then do
     -- Generate .agdai files.
     success <- generateInterfaces pd lbi
     -- Copy again, now including the .agdai files.
     when success $ copyHook simpleUserHooks pd' lbi hooks flags
+  else
+    putStrLn "Skipping generation of Agda core library interface files"
   where
   pd' = pd
     { dataFiles = concatMap (expandAgdaExt pd) $ dataFiles pd
@@ -66,23 +72,54 @@ copyHook' pd lbi hooks flags = do
     -- , extraDocFiles = []
     }
 
+-- We only want to write interfaces if installing the executable.
+-- If we're installing *just* the library, the interface files are not needed
+-- and, most importantly, the executable will not be available to be run (cabal#10235)
+wantInterfaces :: CopyFlags -> Bool
+wantInterfaces _flags = do
+#if MIN_VERSION_Cabal(3,11,0)
+    any isAgdaExe (copyArgs _flags)
+      where
+        isAgdaExe "exe:agda" = True
+        isAgdaExe _ = False
+#else
+  True
+#endif
+
 -- Used to add .agdai files to data-files
 expandAgdaExt :: PackageDescription -> FilePath -> [FilePath]
-expandAgdaExt pd fp | takeExtension fp == ".agda" = [ fp, toIFile pd fp ]
-                    | otherwise                   = [ fp ]
+expandAgdaExt pd = \ fp ->
+    -- N.B. using lambda here so that @expandAgdaExt pd@ can be partially evaluated.
+    if takeExtension fp == ".agda" then [ fp, iFile fp ] else [ fp ]
+  where
+  iFile = toIFile pd
 
 version :: PackageDescription -> String
 version = intercalate "." . map show . versionNumbers . pkgVersion . package
 
+-- | This returns @lib/prim@.
+--
 projectRoot :: PackageDescription -> FilePath
-projectRoot pd = takeDirectory agdaLibFile where
+projectRoot pd = takeDirectory agdaLibFile
+  where
   [agdaLibFile] = filter ((".agda-lib" ==) . takeExtension) $ dataFiles pd
 
-toIFile :: PackageDescription -> FilePath -> FilePath
-toIFile pd file = buildDir </> fileName where
+-- | Turns e.g. @lib/prim/Agda/Primitive.agda@
+--   into @lib/prim/_build/2.7.0/agda/Agda/Primitive.agdai@.
+--
+--   An absolute path will be returned unchanged.
+toIFile ::
+     PackageDescription
+  -> FilePath            -- ^ Should be a relative path.
+  -> FilePath            -- ^ Then this is also a relative path.
+toIFile pd = (buildDir </>) . fileName
+  where
   root = projectRoot pd
+    -- e.g. root     = "lib/prim"
   buildDir = root </> "_build" </> version pd </> "agda"
-  fileName = makeRelative root $ replaceExtension file ".agdai"
+    -- e.g. buildDir = "lib/prim/_build/2.7.0/agda"
+  fileName file = makeRelative root $ replaceExtension file ".agdai"
+    -- e.g. fileName "lib/prim/Agda/Primitive.agda" = "Agda/Primitive.agdai"
 
 -- Andreas, 2019-10-21, issue #4151:
 -- skip the generation of interface files with program suffix "-quicker"
@@ -94,6 +131,8 @@ skipInterfaces lbi = fromPathTemplate (progSuffix lbi) == "-quicker"
 generateInterfaces :: PackageDescription -> LocalBuildInfo -> IO Bool
 generateInterfaces pd lbi = do
 
+  putStrLn "Generating Agda core library interface files..."
+
   -- for debugging, these are examples how you can inspect the flags...
   -- print $ flagAssignment lbi
   -- print $ fromPathTemplate $ progSuffix lbi
@@ -102,24 +141,20 @@ generateInterfaces pd lbi = do
   let bdir = buildDir lbi
       agda = bdir </> "agda" </> "agda" <.> agdaExeExtension
 
+  -- We should be in the current directory root of the cabal package
+  -- and data-files reside in src/data relative to this.
+  --
   ddir <- makeAbsolute $ "src" </> "data"
-
-  -- assuming we want to type check all .agda files in data-files
-  -- current directory root of the package.
-
-  putStrLn "Generating Agda library interface files..."
 
   -- The Agda.Primitive* and Agda.Builtin* modules.
   let builtins = filter ((== ".agda") . takeExtension) (dataFiles pd)
 
+  -- The absolute filenames of their interfaces.
+  let interfaces = map ((ddir </>) . toIFile pd) builtins
+
   -- Remove all existing .agdai files.
-  forM_ builtins $ \fp -> do
-    let fullpathi = toIFile pd (ddir </> fp)
-
-        handleExists e | isDoesNotExistError e = return ()
-                       | otherwise             = throwIO e
-
-    removeFile fullpathi `catch` handleExists
+  forM_ interfaces $ \ fp -> removeFile fp `catch` \ e ->
+    unless (isDoesNotExistError e) $ throwIO e
 
   -- Type-check all builtin modules (in a single Agda session to take
   -- advantage of caching).
@@ -149,19 +184,19 @@ generateInterfaces pd lbi = do
         , [ "EOF" ]
         ]
   let onIOError (e :: IOException) = False <$ do
-        putStr $ unlines $ concat
-          [ [ "*** Warning!"
-            , "*** Could not generate Agda library interface files."
+        warn $ concat
+          [ [ "*** Could not generate Agda library interface files."
             , "*** Reason:"
             , show e
             , "*** The attempted call to Agda was:"
             ]
           , callLines
-          , [ "*** Ignoring error, continuing installation..." ]
           ]
   env <- getEnvironment
   handle onIOError $ do
-    True <$ readCreateProcess
+
+    -- Generate interface files via a call to Agda.
+    readCreateProcess
       (proc agda agdaArgs)
         { delegate_ctlc = True
                           -- Make Agda look for data files in a
@@ -169,6 +204,29 @@ generateInterfaces pd lbi = do
         , env           = Just ((agdaDirEnvVar, ddir) : env)
         }
       (unlines loadBuiltinCmds)
+
+    -- Check whether all interface files have been generated.
+    missing <- catMaybes <$> forM interfaces \ f ->
+      doesFileExist f <&> \case
+        True  -> Nothing
+        False -> Just f
+
+    -- Warn if not all interface files have been generated, but don't crash.
+    -- This might help with issue #7455.
+    let success = null missing
+    unless success $ warn $ concat
+      [ [ "*** Agda failed to generate the following library interface files:" ]
+      , missing
+      ]
+    return success
+
+warn :: [String] -> IO ()
+warn msgs = putStr $ unlines $ concat
+    [ [ "*** Warning!" ]
+    , msgs
+    , [ "*** Ignoring error, continuing installation..." ]
+    ]
+
 
 
 agdaExeExtension :: String

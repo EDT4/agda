@@ -24,8 +24,7 @@ module Agda.TypeChecking.Reduce
  , slowNormaliseArgs
  ) where
 
-import Control.Monad ( (>=>), void )
-import Control.Monad.Except
+import Control.Monad.Except ( MonadError(..) )
 
 import Data.List ( intercalate )
 import Data.Maybe
@@ -40,6 +39,7 @@ import Agda.Interaction.Options
 
 import Agda.Syntax.Position
 import Agda.Syntax.Common
+import Agda.Syntax.Common.Pretty (prettyShow)
 import Agda.Syntax.Internal
 import Agda.Syntax.Internal.MetaVars
 import Agda.Syntax.Scope.Base (Scope)
@@ -63,9 +63,9 @@ import {-# SOURCE #-} Agda.TypeChecking.Opacity
 import Agda.Utils.Functor
 import Agda.Utils.Lens
 import Agda.Utils.List
+import Agda.Utils.List1 (List1)
 import qualified Agda.Utils.Maybe.Strict as Strict
 import Agda.Utils.Monad
-import Agda.Syntax.Common.Pretty (prettyShow)
 import Agda.Utils.Size
 import Agda.Utils.Tuple
 import qualified Agda.Utils.SmallSet as SmallSet
@@ -168,6 +168,7 @@ class Instantiate t where
   instantiate' = traverse instantiate'
 
 instance Instantiate t => Instantiate [t]
+instance Instantiate t => Instantiate (List1 t)
 instance Instantiate t => Instantiate (Map k t)
 instance Instantiate t => Instantiate (Maybe t)
 instance Instantiate t => Instantiate (Strict.Maybe t)
@@ -920,6 +921,7 @@ appDefE'' v cls rewr es = traceSDoc "tc.reduce" 90 ("appDefE' v = " <+> pretty v
               nvars = size $ clauseTel cl
           -- if clause is underapplied, skip to next clause
           if length es < npats then goCls cls es else do
+            termCheck <- asksTC envTermCheckReducing
             let (es0, es1) = splitAt npats es
             (m, es0) <- matchCopatterns pats es0
             let es = es0 ++ es1
@@ -934,6 +936,8 @@ appDefE'' v cls rewr es = traceSDoc "tc.reduce" 90 ("appDefE' v = " <+> pretty v
               DontKnow OnlyLazy _ -> goCls cls es
               DontKnow NonLazy  b -> rewrite b (applyE v) rewr es
               Yes simpl vs -- vs is the subst. for the variables bound in body
+                | termCheck && fromMaybe True (clauseRecursive cl) ->
+                    return $ NoReduction __IMPOSSIBLE__
                 | Just w <- body -> do -- clause has body?
                     -- TODO: let matchPatterns also return the reduced forms
                     -- of the original arguments!
@@ -1193,9 +1197,10 @@ class Normalise t where
   default normalise' :: (t ~ f a, Traversable f, Normalise a) => t -> ReduceM t
   normalise' = traverse normalise'
 
--- boring instances:
+-- Functor instances:
 
 instance Normalise t => Normalise [t]
+instance Normalise t => Normalise (List1 t)
 instance Normalise t => Normalise (Map k t)
 instance Normalise t => Normalise (Maybe t)
 instance Normalise t => Normalise (Strict.Maybe t)
@@ -1205,6 +1210,8 @@ instance Normalise t => Normalise (Strict.Maybe t)
 instance Normalise t => Normalise (Named name t)
 instance Normalise t => Normalise (IPBoundary' t)
 instance Normalise t => Normalise (WithHiding t)
+
+-- more boring instances:
 
 instance (Normalise a, Normalise b) => Normalise (a,b) where
     normalise' (x,y) = (,) <$> normalise' x <*> normalise' y
@@ -1380,6 +1387,7 @@ class InstantiateFull t where
 -- Traversables (doesn't include binders like Abs, Tele):
 
 instance InstantiateFull t => InstantiateFull [t]
+instance InstantiateFull t => InstantiateFull (List1 t)
 instance InstantiateFull t => InstantiateFull (HashMap k t)
 instance InstantiateFull t => InstantiateFull (Map k t)
 instance InstantiateFull t => InstantiateFull (Maybe t)
@@ -1687,13 +1695,12 @@ instance InstantiateFull CompiledClauses where
   instantiateFull' (Case n bs) = Case n <$> instantiateFull' bs
 
 instance InstantiateFull Clause where
-    instantiateFull' (Clause rl rf tel ps b t catchall exact recursive unreachable ell wm) =
+    instantiateFull' (Clause rl rf tel ps b t catchall recursive unreachable ell wm) =
        Clause rl rf <$> instantiateFull' tel
        <*> instantiateFull' ps
        <*> instantiateFull' b
        <*> instantiateFull' t
        <*> return catchall
-       <*> return exact
        <*> return recursive
        <*> return unreachable
        <*> return ell

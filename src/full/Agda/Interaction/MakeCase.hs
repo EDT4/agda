@@ -6,8 +6,6 @@ module Agda.Interaction.MakeCase where
 
 import Prelude hiding ((!!), null)
 
-import Control.Monad
-
 import Data.Either
 import qualified Data.List as List
 import Data.Maybe
@@ -154,6 +152,8 @@ parseVariables f cxt asb ii rng ss = do
       (_              , LetBound    ) -> failLetBound s
       -- Case 1g: with-bound variable (not used?)
       (_              , WithBound   ) -> __IMPOSSIBLE__
+      -- Case 1h: macro-bound variable (interactive command impossible in macro context)
+      (_              , MacroBound   ) -> __IMPOSSIBLE__
     -- Case 2: variable has no binding site, so we check if it can be
     -- made visible.
     Nothing -> case List.find (((==) `on` nameConcrete) name . fst) clauseVars of
@@ -229,7 +229,6 @@ recheckAbstractClause t sub acl = checkClauseLHS t sub acl $ \ lhs -> do
                   , clauseBody        = Nothing -- We don't need the body for make case
                   , clauseType        = Just (lhsBodyType lhs)
                   , clauseCatchall    = False
-                  , clauseExact       = Nothing
                   , clauseRecursive   = Nothing
                   , clauseUnreachable = Nothing
                   , clauseEllipsis    = lhsEllipsis $ A.spLhsInfo $ A.clauseLHS acl
@@ -482,7 +481,7 @@ makePatternVarsVisible is sc@SClause{ scPats = ps } =
 --   In this case, replace the rhs by @record{}@
 makeRHSEmptyRecord :: A.RHS -> A.RHS
 makeRHSEmptyRecord = \case
-  A.RHS{}            -> A.RHS{ rhsExpr = A.Rec empty empty, rhsConcrete = Nothing }
+  A.RHS{}            -> A.RHS{ rhsExpr = A.Rec (recInfoBrace noRange) empty, rhsConcrete = Nothing }
   rhs@A.RewriteRHS{} -> rhs{ A.rewriteRHS = makeRHSEmptyRecord $ A.rewriteRHS rhs }
   A.AbsurdRHS        -> __IMPOSSIBLE__
   A.WithRHS{}        -> __IMPOSSIBLE__
@@ -502,10 +501,6 @@ makeAbsurdClause f ell (SClause tel sps _ _ t) = do
       ]
     ]
   withCurrentModule (qnameModule f) $
-    -- Andreas, 2015-05-29 Issue 635
-    -- Contract implicit record patterns before printing.
-    -- c <- translateRecordPatterns $ Clause noRange tel perm ps NoBody t False
-    -- Jesper, 2015-09-19 Don't contract, since we do on-demand splitting
     inTopContext $ reify $ QNamed f $ Clause
       { clauseLHSRange  = noRange
       , clauseFullRange = noRange
@@ -514,7 +509,6 @@ makeAbsurdClause f ell (SClause tel sps _ _ t) = do
       , clauseBody      = Nothing
       , clauseType      = argFromDom <$> t
       , clauseCatchall    = False
-      , clauseExact       = Nothing
       , clauseRecursive   = Nothing
       , clauseUnreachable = Nothing
       , clauseEllipsis    = ell

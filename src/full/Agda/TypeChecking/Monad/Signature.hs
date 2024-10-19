@@ -5,7 +5,6 @@ module Agda.TypeChecking.Monad.Signature where
 import Prelude hiding (null)
 
 import Control.Arrow                 ( first, second )
-import Control.Monad
 import Control.Monad.Except          ( ExceptT )
 import Control.Monad.State           ( StateT  )
 import Control.Monad.Reader          ( ReaderT )
@@ -57,9 +56,6 @@ import {-# SOURCE #-} Agda.TypeChecking.Pretty
 import {-# SOURCE #-} Agda.TypeChecking.ProjectionLike
 import {-# SOURCE #-} Agda.TypeChecking.Reduce
 import {-# SOURCE #-} Agda.TypeChecking.Opacity
-
-import {-# SOURCE #-} Agda.Compiler.Treeless.Erase
-import {-# SOURCE #-} Agda.Compiler.Builtin
 
 import Agda.Utils.CallStack.Base
 import Agda.Utils.Either
@@ -188,10 +184,10 @@ addConstant q d = do
 -- does not need to be supplied.
 
 addConstant' ::
-  QName -> ArgInfo -> QName -> Type -> Defn -> TCM ()
-addConstant' q info x t def = do
+  QName -> ArgInfo -> Type -> Defn -> TCM ()
+addConstant' q info t def = do
   lang <- getLanguage
-  addConstant q $ defaultDefn info x t lang def
+  addConstant q $ defaultDefn info q t lang def
 
 -- | Set termination info of a defined function symbol.
 setTerminates :: MonadTCState m => QName -> Bool -> m ()
@@ -237,25 +233,9 @@ mkPragma s = CompilerPragma <$> getCurrentRange <*> pure s
 
 -- | Add a compiler pragma `{-\# COMPILE <backend> <name> <text> \#-}`
 addPragma :: BackendName -> QName -> String -> TCM ()
-addPragma b q s = ifM erased
-  {- then -} (warning $ PragmaCompileErased b q)
-  {- else -} $ do
+addPragma b q s = do
     pragma <- mkPragma s
     modifySignature $ updateDefinition q $ addCompilerPragma b pragma
-
-  where
-
-  erased :: TCM Bool
-  erased = do
-    def <- theDef <$> getConstInfo q
-    case def of
-      -- If we have a defined symbol, we check whether it is erasable
-      Function{} ->
-        locallyTC      eActiveBackendName (const $ Just b) $
-        locallyTCState stBackends         (const $ builtinBackends) $
-        isErasable q
-     -- Otherwise (Axiom, Datatype, Record type, etc.) we keep it
-      _ -> pure False
 
 getUniqueCompilerPragma :: BackendName -> QName -> TCM (Maybe CompilerPragma)
 getUniqueCompilerPragma backend q = do
@@ -263,11 +243,10 @@ getUniqueCompilerPragma backend q = do
   case ps of
     []  -> return Nothing
     [p] -> return $ Just p
-    (_:p1:_) ->
-      setCurrentRange p1 $
-            genericDocError =<< do
-                  hang (text ("Conflicting " ++ backend ++ " pragmas for") <+> pretty q <+> "at") 2 $
-                       vcat [ "-" <+> pretty (getRange p) | p <- ps ]
+    _:p1:_ -> setCurrentRange p1 do
+      typeError . CustomBackendError backend =<< do
+        hang (hsep [ "Conflicting", pretty backend, "pragmas for", prettyTCM q, "at" ]) 2 $
+          vcat [ "-" <+> pretty (getRange p) | p <- ps ]
 
 setFunctionFlag :: FunctionFlag -> Bool -> QName -> TCM ()
 setFunctionFlag flag val q = modifyGlobalDefinition q $ set (lensTheDef . funFlag flag) val
@@ -578,7 +557,6 @@ applySection' new ptel old ts ScopeCopyInfo{ renNames = rd, renModules = rm } = 
             t   = defType d `piApply` ts'
             pol = defPolarity d `apply` ts'
             occ = defArgOccurrences d `apply` ts'
-            gen = defArgGeneralizable d `apply` ts'
             inst = defInstance d
             -- the name is set by the addConstant function
             nd :: QName -> TCM Definition
@@ -592,7 +570,6 @@ applySection' new ptel old ts ScopeCopyInfo{ renNames = rd, renModules = rm } = 
                     , defType           = t
                     , defPolarity       = pol
                     , defArgOccurrences = occ
-                    , defArgGeneralizable = gen
                     , defGeneralizedParams = [] -- This is only needed for type checking data/record defs so no need to copy it.
                     , defDisplay        = []
                     , defMutual         = -1   -- TODO: mutual block?
@@ -655,7 +632,7 @@ applySection' new ptel old ts ScopeCopyInfo{ renNames = rd, renModules = rm } = 
                          , recConHead = copyConHead c
                          , recFields  = (map . fmap) copyName fs
                          }
-                GeneralizableVar -> return GeneralizableVar
+                GeneralizableVar gv -> return $ GeneralizableVar $ gv `apply` ts'
                 _ -> do
                   (mst, _, cc) <- compileClauses Nothing [cl] -- Andreas, 2012-10-07 non need for record pattern translation
                   fun          <- emptyFunctionData
@@ -686,7 +663,6 @@ applySection' new ptel old ts ScopeCopyInfo{ renNames = rd, renModules = rm } = 
                             _ -> Def x $ map Apply ts'
                         , clauseType        = Just $ defaultArg t
                         , clauseCatchall    = False
-                        , clauseExact       = Just True
                         , clauseRecursive   = Just False -- definitely not recursive
                         , clauseUnreachable = Just False -- definitely not unreachable
                         , clauseEllipsis    = NoEllipsis

@@ -15,18 +15,17 @@ import Control.Concurrent.STM.TChan
 import Control.Concurrent.STM.TVar
 import qualified Control.Exception  as E
 
-import Control.Monad
 import Control.Monad.Except         ( MonadError(..), ExceptT(..), runExceptT )
 import Control.Monad.IO.Class       ( MonadIO(..) )
 import Control.Monad.State          ( MonadState(..), gets, modify, runStateT )
 import Control.Monad.STM
 import Control.Monad.State          ( StateT )
-import Control.Monad.Trans          ( lift )
 
 import qualified Data.Char as Char
 import Data.Function (on)
 import qualified Data.List as List
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 import Data.Maybe
 
 import System.Directory
@@ -38,7 +37,7 @@ import qualified Agda.TypeChecking.Monad as TCM
 import qualified Agda.TypeChecking.Pretty as TCP
 import Agda.TypeChecking.Rules.Term (checkExpr, isType_)
 import Agda.TypeChecking.Errors
-import Agda.TypeChecking.Warnings (runPM, warning)
+import Agda.TypeChecking.Warnings (warning)
 
 import Agda.Syntax.Fixity
 import Agda.Syntax.Position
@@ -50,7 +49,7 @@ import Agda.Syntax.Abstract as A
 import Agda.Syntax.Abstract.Pretty
 import Agda.Syntax.Info (mkDefInfo)
 import Agda.Syntax.Translation.ConcreteToAbstract
-import Agda.Syntax.Translation.AbstractToConcrete hiding (withScope)
+import Agda.Syntax.Translation.AbstractToConcrete
 import Agda.Syntax.Scope.Base
 import Agda.Syntax.TopLevelModuleName
 
@@ -526,16 +525,16 @@ interpret (Cmd_load m argv) =
 
 interpret (Cmd_compile backend file argv) =
   cmd_load' file argv allowUnsolved mode $ \ checkResult -> do
-    mw <- lift $ applyFlagsToTCWarnings $ crWarnings checkResult
-    case mw of
-      [] -> do
+    ws <- lift $ applyFlagsToTCWarnings $ crWarnings checkResult
+    case null ws of
+      True -> do
         lift $ case backend of
           LaTeX                    -> callBackend "LaTeX" IsMain checkResult
           QuickLaTeX               -> callBackend "LaTeX" IsMain checkResult
           OtherBackend "GHCNoMain" -> callBackend "GHC" NotMain checkResult   -- for backwards compatibility
           OtherBackend b           -> callBackend b IsMain checkResult
         display_info . Info_CompilationOk backend =<< lift B.getWarningsAndNonFatalErrors
-      w@(_:_) -> display_info $ Info_Error $ Info_CompilationError w
+      False -> display_info $ Info_Error $ Info_CompilationError ws
   where
   allowUnsolved = backend `elem` [LaTeX, QuickLaTeX]
   mode | QuickLaTeX <- backend = ScopeCheck
@@ -935,7 +934,7 @@ cmd_load' file argv unsolvedOK mode cmd = do
         lift $ TCM.setCommandLineOptions' root $ mapPragmaOptions update opts
 
     -- Restore the warnings that were saved above.
-    modifyTCLens stTCWarnings (++ warnings)
+    modifyTCLens stTCWarnings $ Set.union warnings
 
     ok <- lift $ Imp.typeCheckMain mode src
 
