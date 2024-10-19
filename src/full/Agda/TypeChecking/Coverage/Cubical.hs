@@ -4,9 +4,7 @@ module Agda.TypeChecking.Coverage.Cubical where
 
 import Prelude hiding (null, (!!))  -- do not use partial functions like !!
 
-import Control.Monad
-import Control.Monad.Except
-import Control.Monad.Trans ( lift )
+import Control.Monad.Except ( runExceptT )
 
 import qualified Data.Set as Set
 import Data.IntSet (IntSet)
@@ -357,7 +355,6 @@ createMissingTrXTrXClause q_trX f n x old_sc = do
                  , clauseBody      = Just rhs
                  , clauseType      = Just $ Arg (getArgInfo ty) (unDom ty)
                  , clauseCatchall    = False
-                 , clauseExact       = Nothing
                  , clauseRecursive   = Just True
                  , clauseUnreachable = Just False
                  , clauseEllipsis    = NoEllipsis
@@ -625,7 +622,6 @@ createMissingTrXHCompClause q_trX f n x old_sc = do
                  , clauseBody      = Just rhs
                  , clauseType      = Just $ Arg (getArgInfo ty) (unDom ty)
                  , clauseCatchall    = False
-                 , clauseExact       = Nothing
                  , clauseRecursive   = Just True
                  , clauseUnreachable = Just False
                  , clauseEllipsis    = NoEllipsis
@@ -860,7 +856,6 @@ createMissingTrXConClause q_trX f n x old_sc c (UE gamma gamma' xTel u v rho tau
                   , clauseBody      = Just rhs
                   , clauseType      = Just $ Arg (getArgInfo ty) (unDom ty)
                   , clauseCatchall    = False
-                  , clauseExact       = Nothing
                   , clauseRecursive   = Just True
                   , clauseUnreachable = Just False
                   , clauseEllipsis    = NoEllipsis
@@ -1115,7 +1110,6 @@ createMissingConIdClause f _n x old_sc (TheInfo info) = setCurrentRange f $ do
                     , clauseUnreachable = Just False  -- missing, thus, not unreachable
                     , clauseRecursive   = Just False
                     , clauseEllipsis    = NoEllipsis
-                    , clauseExact       = Nothing
                     , clauseWhereModule = Nothing
                     }
   addClauses f [cl]
@@ -1362,7 +1356,6 @@ createMissingHCompClause f n x old_sc (SClause tel ps _sigma' _cps (Just t)) cs 
                     , clauseBody      = Just $ rhs
                     , clauseType      = Just $ defaultArg t
                     , clauseCatchall    = False
-                    , clauseExact       = Just True
                     , clauseRecursive   = Nothing     -- TODO: can it be recursive?
                     , clauseUnreachable = Just False  -- missing, thus, not unreachable
                     , clauseEllipsis    = NoEllipsis

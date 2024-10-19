@@ -13,8 +13,7 @@ module Agda.TypeChecking.Rules.Builtin
 
 import Prelude hiding (null)
 
-import Control.Monad
-import Control.Monad.Except
+import Control.Monad.Except      ( catchError )
 import Control.Monad.Trans.Maybe
 
 import Data.List (find, sortBy)
@@ -41,9 +40,9 @@ import Agda.TypeChecking.Positivity.Occurrence
 import Agda.TypeChecking.Reduce
 import Agda.TypeChecking.Substitute
 import Agda.TypeChecking.Telescope
-import Agda.TypeChecking.Rules.Term ( checkExpr , inferExpr )
 import Agda.TypeChecking.Warnings
 
+import {-# SOURCE #-} Agda.TypeChecking.Rules.Term ( checkExpr , inferExpr )
 import {-# SOURCE #-} Agda.TypeChecking.Rules.Builtin.Coinduction
 import {-# SOURCE #-} Agda.TypeChecking.Rewriting
 
@@ -412,6 +411,7 @@ coreBuiltins =
                                                                    tTCM_ (primSigma <#> primLevelZero <#> primLevelZero <@> primNat <@>
                                                                           (Lam defaultArgInfo . Abs "_" <$> (primSigma <#> primLevelZero <#> primLevelZero <@> primString <@>
                                                                            (Lam defaultArgInfo . Abs "_" <$> primString)))))
+  , builtinAgdaTCMCheckFromString            |-> builtinPostulate (tstring --> ttype --> tTCM_ primAgdaTerm)
   , builtinAgdaTCMGetInstances               |-> builtinPostulate (tmeta --> tTCM_ (list primAgdaTerm))
   , builtinAgdaTCMSolveInstances             |-> builtinPostulate (tTCM_ primUnit)
   , builtinAgdaTCMPragmaForeign              |-> builtinPostulate (tstring --> tstring --> tTCM_ primUnit)
@@ -975,7 +975,7 @@ bindBuiltinNoDef b q = inTopContext $ do
       -- We start by adding the corresponding postulate
       t   <- mt
       fun <- emptyFunctionData
-      addConstant' q (setRelevance rel defaultArgInfo) q t (def fun)
+      addConstant' q (setRelevance rel defaultArgInfo) t (def fun)
       -- And we then *modify* the definition based on our needs:
       -- We add polarity information for SIZE-related definitions
       builtinSizeHook b q t
@@ -1030,7 +1030,7 @@ bindBuiltinNoDef b q = inTopContext $ do
               , conErasure = erasure
               , conInline  = False
               }
-      addConstant' q defaultArgInfo q t def
+      addConstant' q defaultArgInfo t def
       addDataCons d [q]
 
       when (b == builtinReflId)     $ builtinReflIdHook q
@@ -1039,7 +1039,7 @@ bindBuiltinNoDef b q = inTopContext $ do
 
     Just (BuiltinData mt cs) -> do
       t <- mt
-      addConstant' q defaultArgInfo q t (def t)
+      addConstant' q defaultArgInfo t (def t)
       when (b == builtinId)     $ builtinIdHook q
       bindBuiltinName b $ Def q []
       where
@@ -1067,7 +1067,7 @@ bindBuiltinNoDef b q = inTopContext $ do
       case builtinSort of
         SortIntervalUniv -> requireCubical CErased
         _ -> return ()
-      addConstant' q defaultArgInfo q (sort $ univSort s) def
+      addConstant' q defaultArgInfo (sort $ univSort s) def
       bindBuiltinName b $ Def q []
 
     Just{}  -> __IMPOSSIBLE__

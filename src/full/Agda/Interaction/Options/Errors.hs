@@ -7,9 +7,28 @@ import Data.List              ( sort )
 import Generic.Data           ( FiniteEnumeration(..) )
 import GHC.Generics           ( Generic )
 
+import Agda.Syntax.Common     ( ConstructorOrPatternSynonym(..) )
+
 import Agda.Utils.Function    ( applyWhenJust )
 import Agda.Utils.List        ( initWithDefault )
 import Agda.Utils.Impossible  ( __IMPOSSIBLE__ )
+
+-- | Extra information for error 'CannotQuoteTerm'.
+
+data CannotQuoteTerm
+  = CannotQuoteTermHidden
+  | CannotQuoteTermNothing
+  deriving (Show, Generic, Enum, Bounded)
+
+-- | What kind of declaration?
+--
+--   See also 'Agda.Syntax.Concrete.Definitions.Types.DataRecOrFun'.
+
+data DataRecOrFun_
+  = DataName_  -- ^ Name of a data type.
+  | RecName_   -- ^ Name of a record type.
+  | FunName_   -- ^ Name of a function.
+  deriving (Show, Generic, Enum, Bounded)
 
 -- | The reason for an 'ErasedDatatype' error.
 
@@ -32,9 +51,7 @@ data NotAllowedInDotPatterns
 -- | Reasons for error 'NotAValidLetBinding'.
 
 data NotAValidLetBinding
-  = AbstractNotAllowed
-  | MacrosNotAllowed
-  | MissingRHS
+  = MissingRHS
   | NotAValidLetPattern
   | WhereClausesNotAllowed
   -- These cannot be triggered:
@@ -53,9 +70,11 @@ data NotAValidLetExpression
 
 data ErrorName
   -- Error groups (alphabetically) with named sub errors
-  = GHCBackendError_       GHCBackendError_
+  = ExecError_             ExecError_
+  | GHCBackendError_       GHCBackendError_
   | ImpossibleConstructor_ NegativeUnification_
   | InteractionError_      InteractionError_
+  | JSBackendError_        JSBackendError_
   | NicifierError_         DeclarationException_
   | SplitError_            SplitError_
   | UnquoteError_          UnquoteError_
@@ -85,6 +104,7 @@ data ErrorName
   | AmbiguousTopLevelModuleName_
   | AsPatternInPatternSynonym_
   | AttributeKindNotEnabled_
+  | BackendDoesNotSupportOnlyScopeChecking_
   | BadArgumentsToPatternSynonym_
   | BuiltinInParameterisedModule_
   | BuiltinMustBeConstructor_
@@ -92,6 +112,8 @@ data ErrorName
   | CannotEliminateWithProjection_
   | CannotGenerateHCompClause_
   | CannotGenerateTransportClause_
+  | CannotQuote_ CannotQuote_
+  | CannotQuoteTerm_ CannotQuoteTerm
   | CannotResolveAmbiguousPatternSynonym_
   | CannotRewriteByNonEquation_
   | CannotSolveSizeConstraints_
@@ -102,13 +124,16 @@ data ErrorName
   | ConstructorDoesNotTargetGivenType_
   | ConstructorPatternInWrongDatatype_
   | ContradictorySizeConstraint_
+  | CopatternHeadNotProjection_
   | CubicalCompilationNotSupported_
   | CubicalPrimitiveNotFullyApplied_
   | CyclicModuleDependency_
   | DeBruijnIndexOutOfScope_
+  | DeclarationsAfterTopLevelModule_
   | DefinitionInDifferentModule_
   | DefinitionIsErased_
   | DefinitionIsIrrelevant_
+  | DoNotationError_
   | DoesNotMentionTicks_
   | DotPatternInPatternSynonym_
   | DuplicateBuiltinBinding_
@@ -128,7 +153,10 @@ data ErrorName
   | GeneralizeNotSupportedHere_
   | GeneralizedVarInLetOpenedModule_
   | HidingMismatch_
+  | IdiomBracketError_
+  | InvalidDottedExpression_
   | IllTypedPatternAfterWithAbstraction_
+  | IllegalDeclarationBeforeTopLevelModule_
   | IllegalDeclarationInDataDefinition_
   | IllegalHidingInPostfixProjection_
   | IllegalInstanceVariableInPatternSynonym_
@@ -143,6 +171,7 @@ data ErrorName
   | InvalidModalTelescopeUse_
   | InvalidPattern_
   | InvalidProjectionParameter_
+  | InvalidPun_ ConstructorOrPatternSynonym
   | InvalidTypeSort_
   | LibTooFarDown_
   | LiteralTooBig_
@@ -150,14 +179,15 @@ data ErrorName
   | MetaCannotDependOn_
   | MetaErasedSolution_
   | MetaIrrelevantSolution_
-  | MetaOccursInItself_
   | MismatchedProjectionsError_
+  | MissingTypeSignature_ DataRecOrFun_
   | ModuleArityMismatch_
   | ModuleDefinedInOtherFile_
   | ModuleNameDoesntMatchFileName_
   | ModuleNameUnexpected_
   | MultipleFixityDecls_
   | MultiplePolarityPragmas_
+  | ConstructorNameOfNonRecord_
   | NamedWhereModuleInRefinedContext_
   | NeedOptionAllowExec_
   | NeedOptionCopatterns_
@@ -185,17 +215,19 @@ data ErrorName
   | NotInScope_
   | NotLeqSort_
   | NotValidBeforeField_
-  | NothingAppliedToHiddenArg_
-  | NothingAppliedToInstanceArg_
+  | OpenEverythingInRecordWhere_
   | OverlappingProjects_
   | PatternInPathLambda_
   | PatternInSystem_
-  | PatternSynonymArgumentShadowsConstructorOrPatternSynonym_
+  | PatternSynonymArgumentShadows_ ConstructorOrPatternSynonym
+  | PrivateRecordField_
   | ProjectionIsIrrelevant_
+  | QualifiedLocalModule_
   | QuantityMismatch_
   | RecursiveRecordNeedsInductivity_
   | ReferencesFutureVariables_
   | RelevanceMismatch_
+  | RepeatedNamesInImportDirective_
   | RepeatedVariablesInPattern_
   | ShadowedModule_
   | ShouldBeASort_
@@ -225,6 +257,7 @@ data ErrorName
   | TooManyPatternsInWithClause_
   | TooManyPolarities_
   | TriedToCopyConstrainedPrim_
+  | InvalidInstanceHeadType_
   | UnboundVariablesInPatternSynonym_
   | UnequalCohesion_
   | UnequalFiniteness_
@@ -238,6 +271,7 @@ data ErrorName
   | UnexpectedParameter_
   | UnexpectedTypeSignatureForParameter_
   | UnexpectedWithPatterns_
+  | UnknownBackend_
   | UnusableAtModality_
   | UnusedVariableInPatternSynonym_
   | VariableIsErased_
@@ -265,12 +299,10 @@ data DeclarationException_
   = AmbiguousConstructorN_
   | AmbiguousFunClauses_
   | BadMacroDef_
-  | DeclarationPanic_
   | DisallowedInterleavedMutual_
   | DuplicateAnonDeclaration_
   | DuplicateDefinition_
   | InvalidMeasureMutual_
-  | InvalidName_
   | MissingWithClauses_
   | MultipleEllipses_
   | OpaqueInMutual_
@@ -287,6 +319,11 @@ data GHCBackendError_
   | WrongTypeOfMain_
   deriving (Show, Generic)
   deriving (Enum, Bounded) via (FiniteEnumeration GHCBackendError_)
+
+data JSBackendError_
+  = BadCompilePragma_
+  deriving (Show, Generic)
+  deriving (Enum, Bounded) via (FiniteEnumeration JSBackendError_)
 
 data InteractionError_
   = CannotRefine_
@@ -327,15 +364,31 @@ data SplitError_
   deriving (Show, Generic)
   deriving (Enum, Bounded) via (FiniteEnumeration SplitError_)
 
+data CannotQuote_
+  = CannotQuoteAmbiguous_
+  | CannotQuoteExpression_
+  | CannotQuoteHidden_
+  | CannotQuoteNothing_
+  | CannotQuotePattern_
+  deriving (Show, Generic, Enum, Bounded)
+
+data ExecError_
+  = ExeNotTrusted_
+  | ExeNotFound_
+  | ExeNotExecutable_
+  deriving (Show, Generic, Enum, Bounded)
+
 data UnquoteError_
-  = BadVisibility_
-  | CannotDeclareHiddenFunction_
+  = CannotDeclareHiddenFunction_
   | ConInsteadOfDef_
   | DefInsteadOfCon_
+  | MissingDeclaration_
+  | MissingDefinition_
+  | NakedUnquote_
   | NonCanonical_
   | BlockedOnMeta_
   | PatLamWithoutClauses_
-  | UnquotePanic_
+  | StaleMeta_
   deriving (Show, Generic, Enum, Bounded)
 
 -- * Printing error names
@@ -349,16 +402,34 @@ erasedDatatypeReasonString = show
 
 errorNameString :: ErrorName -> String
 errorNameString = \case
+  ExecError_              err -> "Exec." ++ execErrorNameString err
   GHCBackendError_        err -> "GHCBackend." ++ ghcBackendErrorNameString err
   ImpossibleConstructor_  err -> "ImpossibleConstructor." ++ negativeUnificationErrorNameString err
   InteractionError_       err -> "Interaction." ++ interactionErrorNameString err
+  JSBackendError_         err -> "JSBackend." ++ jsBackendErrorNameString err
   NicifierError_          err -> "Syntax." ++ declarationExceptionNameString err
   SplitError_             err -> "SplitError." ++ splitErrorNameString err
   UnquoteError_           err -> "Unquote." ++ unquoteErrorNameString err
+  CannotQuote_             err -> "CannotQuote." ++ cannotQuoteNameString err
+  CannotQuoteTerm_         err -> "CannotQuoteTerm." ++ cannotQuoteTermNameString err
+  InvalidPun_              err -> "InvalidPun." ++ constructorOrPatternSynonymNameString err
+  MissingTypeSignature_    err -> "MissingTypeSignature." ++ dataRecOrFunString err
   NotAllowedInDotPatterns_ err -> "NotAllowedInDotPatterns." ++ notAllowedInDotPatternsString err
   NotAValidLetBinding_    merr -> applyWhenJust merr (\ err hd -> hd ++ "." ++ notAValidLetBindingString err) "NotAValidLetBinding"
   NotAValidLetExpression_  err -> "NotAValidLetExpression." ++ notAValidLetExpressionString err
+  PatternSynonymArgumentShadows_ err -> "PatternSynonymArgumentShadows." ++ constructorOrPatternSynonymNameString err
   err -> defaultErrorNameString err
+
+constructorOrPatternSynonymNameString :: ConstructorOrPatternSynonym -> String
+constructorOrPatternSynonymNameString = \case
+  IsConstructor    -> "Constructor"
+  IsPatternSynonym -> "PatternSynonym"
+
+dataRecOrFunString :: DataRecOrFun_ -> String
+dataRecOrFunString = \case
+  DataName_ -> "Data"
+  RecName_  -> "Record"
+  FunName_  -> "Function"
 
 declarationExceptionNameString :: DeclarationException_ -> String
 declarationExceptionNameString = \case
@@ -369,6 +440,9 @@ ghcBackendErrorNameString :: GHCBackendError_ -> String
 ghcBackendErrorNameString = \case
   NotAHaskellType_ err -> "NotAHaskellType." ++ notAHaskellTypeErrorNameString err
   err -> defaultErrorNameString err
+
+jsBackendErrorNameString :: JSBackendError_ -> String
+jsBackendErrorNameString = defaultErrorNameString
 
 interactionErrorNameString :: InteractionError_ -> String
 interactionErrorNameString = defaultErrorNameString
@@ -393,6 +467,22 @@ splitErrorNameString = \case
   ErasedDatatype_ err -> "ErasedDatatype." ++ erasedDatatypeReasonString err
   err -> defaultErrorNameString err
 
+cannotQuoteNameString :: CannotQuote_ -> String
+cannotQuoteNameString = \case
+  CannotQuoteAmbiguous_  -> "Ambiguous"
+  CannotQuoteExpression_ -> "Expression"
+  CannotQuoteHidden_     -> "Hidden"
+  CannotQuoteNothing_    -> "Nothing"
+  CannotQuotePattern_    -> "Pattern"
+
+cannotQuoteTermNameString :: CannotQuoteTerm -> String
+cannotQuoteTermNameString = \case
+  CannotQuoteTermHidden      -> "Hidden"
+  CannotQuoteTermNothing     -> "Nothing"
+
+execErrorNameString :: ExecError_ -> String
+execErrorNameString = defaultErrorNameString
+
 unquoteErrorNameString :: UnquoteError_ -> String
 unquoteErrorNameString = defaultErrorNameString
 
@@ -411,8 +501,6 @@ helpErrors = unlines $ concat
 
 verbalizeNotAValidLetBinding :: NotAValidLetBinding -> String
 verbalizeNotAValidLetBinding = \case
-  AbstractNotAllowed     -> "`abstract` not allowed in let bindings"
-  MacrosNotAllowed       -> "Macros cannot be defined in let bindings"
   MissingRHS             -> "Missing right hand side in let binding"
   NotAValidLetPattern    -> "Not a valid let pattern"
   WhereClausesNotAllowed -> "`where` clauses not allowed in let bindings"
@@ -433,6 +521,7 @@ deriving via (FiniteEnumeration (Maybe a))
 deriving via (FiniteEnumeration (Maybe a))
   instance (Bounded a, Enum a) => Bounded (Maybe a)
 
+instance NFData CannotQuoteTerm
 instance NFData ErasedDatatypeReason
 instance NFData NotAllowedInDotPatterns
 instance NFData NotAValidLetBinding

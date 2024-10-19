@@ -36,8 +36,8 @@ import Control.Exception ( displayException )
 import Control.Monad.Except
 import Control.Monad.State
 
-import Data.Int
 import Data.Maybe ( listToMaybe )
+import Data.Word  ( Word32)
 
 import Agda.Interaction.Options.Warnings
 
@@ -104,7 +104,7 @@ data LayoutBlock
     deriving Show
 
 -- | A (layout) column.
-type Column = Int32
+type Column = Word32
 
 -- | Status of a layout column (see #1145).
 --   A layout column is 'Tentative' until we encounter a new line.
@@ -262,23 +262,24 @@ instance HasRange ParseError where
     errPathRange = posToRange p p
       where p = startPos $ Just $ errPath err
 
+-- | Does not include printing of the range.
+--
 instance Pretty ParseWarning where
-  pretty OverlappingTokensWarning{warnRange} = vcat
-      [ (pretty warnRange <> colon) <+>
-        "Multi-line comment spans one or more literate text blocks."
+  pretty = \case
+
+    OverlappingTokensWarning _r ->
+      "Multi-line comment spans one or more literate text blocks."
+
+    UnsupportedAttribute _r ms -> hsep
+      [ case ms of
+          Nothing -> "Attributes"
+          Just s  -> text s <+> "attributes"
+      , "are not supported here."
       ]
-  pretty (UnsupportedAttribute r s) = vcat
-    [ (pretty r <> colon) <+>
-      (case s of
-         Nothing -> "Attributes"
-         Just s  -> text s <+> "attributes") <+>
-      "are not supported here."
-    ]
-  pretty (MultipleAttributes r s) = vcat
-    [ (pretty r <> colon) <+>
-      "Multiple" <+>
-      maybe id (\s -> (text s <+>)) s "attributes (ignored)."
-    ]
+
+    MultipleAttributes _r ms -> hsep
+      [ "Multiple", pretty ms, "attributes (ignored)." ]
+
 
 instance HasRange ParseWarning where
   getRange OverlappingTokensWarning{warnRange} = warnRange

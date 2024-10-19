@@ -4,8 +4,7 @@ module Agda.TypeChecking.Rules.Term where
 
 import Prelude hiding ( null )
 
-import Control.Monad         ( (<=<), forM )
-import Control.Monad.Except
+import Control.Monad.Except ( MonadError(..) )
 
 import Data.Maybe
 import Data.Either (partitionEithers, lefts)
@@ -24,6 +23,8 @@ import Agda.Syntax.Concrete.Pretty () -- only Pretty instances
 import Agda.Syntax.Concrete (FieldAssignment'(..), nameFieldA, TacticAttribute'(..))
 import qualified Agda.Syntax.Concrete.Name as C
 import Agda.Syntax.Common
+import Agda.Syntax.Common.Pretty ( prettyShow )
+import qualified Agda.Syntax.Common.Pretty as P
 import Agda.Syntax.Internal as I
 import Agda.Syntax.Internal.MetaVars
 import Agda.Syntax.Position
@@ -73,12 +74,12 @@ import Agda.Utils.Function
 import Agda.Utils.Functor
 import Agda.Utils.Lens
 import Agda.Utils.List1  ( List1, pattern (:|) )
+import Agda.Utils.List2  ( pattern List2 )
 import qualified Agda.Utils.List1 as List1
 import Agda.Utils.Maybe
 import Agda.Utils.Monad
 import Agda.Utils.Null
-import Agda.Syntax.Common.Pretty ( prettyShow )
-import qualified Agda.Syntax.Common.Pretty as P
+import qualified Agda.Utils.Set1 as Set1
 import Agda.Utils.Singleton
 import Agda.Utils.Size
 import Agda.Utils.Tuple
@@ -130,7 +131,7 @@ isType_ e = traceCall (IsType_ e) $ do
       return t'
 
     A.Generalized s e -> do
-      (_, t') <- generalizeType s $ isType_ e
+      (_, t') <- generalizeType (Set1.toSet s) $ isType_ e
       --noFunctionsIntoSize t'
       return t'
 
@@ -365,18 +366,20 @@ checkTypedBindings lamOrPi (A.TBind r tac xps e) ret = do
         modMod _        _  = id
 
 checkTypedBindings lamOrPi (A.TLet _ lbs) ret = do
-    checkLetBindings lbs (ret EmptyTel)
+  checkLetBindings lbs (ret EmptyTel)
 
 -- | After a typed binding has been checked, add the patterns it binds
 addTypedPatterns :: List1 (NamedArg A.Binder) -> TCM a -> TCM a
 addTypedPatterns xps ret = do
-  let ps  = List1.mapMaybe (A.extractPattern . namedArg) xps
-  let lbs = map letBinding ps
-  checkLetBindings lbs ret
-  where
+  let
+    ps  = List1.mapMaybe (A.extractPattern . namedArg) xps
+    lbs = map letBinding ps
+
     letBinding :: (A.Pattern, A.BindName) -> A.LetBinding
     letBinding (p, n) = A.LetPatBind (A.LetRange r) p (A.Var $ A.unBind n)
       where r = fuseRange p n
+
+  checkLetBindings' lbs ret
 
 -- | Check a tactic attribute. Should have type Term → TC ⊤.
 checkTacticAttribute :: LamOrPi -> Ranged A.Expr -> TCM Term
@@ -419,13 +422,29 @@ checkLambda :: Comparison -> A.TypedBinding -> A.Expr -> Type -> TCM Term
 checkLambda cmp (A.TLet _ lbs) body target =
   checkLetBindings lbs (checkExpr body target)
 checkLambda cmp b@(A.TBind r tac xps0 typ) body target = do
-  reportSDoc "tc.term.lambda" 30 $ vcat
-    [ "checkLambda before insertion xs =" <+> prettyA xps0
-    ]
+  (tel, tgt0) <- splitImplicitBinderT (List1.head xps0) target
+
   -- Andreas, 2020-03-25, issue #4481: since we have named lambdas now,
   -- we need to insert skipped hidden arguments.
-  xps <- insertImplicitBindersT1 xps0 target
-  checkLambda' cmp r tac xps typ body target
+
+  -- Amy, 2024-10-17: we can't simply insert the new binders into this
+  -- same TBind, since those are all assumed to be of the same type.
+  -- This matters when we're skipping binders to reach something of a
+  -- different type, e.g. in
+  --
+  --    (λ {C = C} → C) : {A B : Set} {C : Nat} → Nat
+  --
+  -- The previous implementation would add two binders and check them
+  -- with the same type as that of {C}, i.e. something like
+  --
+  --    (λ {A B C : _} → C)
+  --
+  -- which fails. The new strategy is to lob domains off the type until
+  -- we reach the right argument, then just add them to the context, and
+  -- bind them after returning.
+
+  teleLam tel <$> addContext tel do
+    checkLambda' cmp r tac xps0 typ body tgt0
 
 checkLambda' ::
      Comparison                -- ^ @cmp@
@@ -738,7 +757,6 @@ checkAbsurdLambda cmp i h e t =
                     , clauseBody      = Nothing
                     , clauseType      = Just $ setModality mod $ defaultArg $ absBody b
                     , clauseCatchall    = True      -- absurd clauses are safe as catch-alls
-                    , clauseExact       = Just False
                     , clauseRecursive   = Just False
                     , clauseUnreachable = Just True -- absurd clauses are unreachable
                     , clauseEllipsis    = NoEllipsis
@@ -928,7 +946,7 @@ expandModuleAssigns mfs xs = do
     case catMaybes pms of
       []        -> return Nothing
       [(_, fa)] -> return (Just fa)
-      mfas      -> typeError $ AmbiguousField f (map fst mfas)
+      x:y:zs    -> typeError $ AmbiguousField f $ fmap fst $ List2 x y zs
   return (fs ++ catMaybes fs')
 
 -- | @checkRecordExpression fs e t@ checks record construction against type @t@.
@@ -936,11 +954,12 @@ expandModuleAssigns mfs xs = do
 checkRecordExpression
   :: Comparison       -- ^ How do we related the inferred type of the record expression
                       --   to the expected type?  Subtype or equal type?
+  -> A.RecStyle       -- ^ record {...} or record where ...
   -> A.RecordAssigns  -- ^ @mfs@: modules and field assignments.
   -> A.Expr           -- ^ Must be @A.Rec _ mfs@.
   -> Type             -- ^ Expected type of record expression.
   -> TCM Term         -- ^ Record value in internal syntax.
-checkRecordExpression cmp mfs e t = do
+checkRecordExpression cmp style mfs e t = do
   reportSDoc "tc.term.rec" 10 $ sep
     [ "checking record expression"
     , prettyA e
@@ -990,7 +1009,7 @@ checkRecordExpression cmp mfs e t = do
       -- In @es@ omitted explicit fields are replaced by underscores.
       -- Omitted implicit or instance fields
       -- are still left out and inserted later by checkArguments_.
-      es <- insertMissingFieldsWarn r meta fs cxs
+      es <- insertMissingFieldsWarn style r meta fs cxs
 
       args <- checkArguments_ cmp ExpandLast re es (_recTel def `apply` vs) >>= \case
         (elims, remainingTel) | null remainingTel
@@ -998,7 +1017,10 @@ checkRecordExpression cmp mfs e t = do
         _ -> __IMPOSSIBLE__
       -- Don't need to block here!
       reportSDoc "tc.term.rec" 20 $ text $ "finished record expression"
-      return $ Con con ConORec (map Apply args)
+      let origin = case style of
+            A.RecStyleBrace -> ConORec
+            A.RecStyleWhere -> ConORecWhere
+      return $ Con con origin (map Apply args)
     _ -> typeError $ ShouldBeRecordType t
 
   where
@@ -1049,13 +1071,13 @@ checkRecordExpression cmp mfs e t = do
 --
 checkRecordUpdate
   :: Comparison   -- ^ @cmp@
-  -> A.ExprInfo   -- ^ @ei@
+  -> A.RecInfo    -- ^ @ei@
   -> A.Expr       -- ^ @recexpr@
   -> A.Assigns    -- ^ @fs@
   -> A.Expr       -- ^ @e = RecUpdate ei recexpr fs@
   -> Type         -- ^ Need not be reduced.
   -> TCM Term
-checkRecordUpdate cmp ei recexpr fs eupd t = do
+checkRecordUpdate cmp ei@(A.RecInfo _ style) recexpr fs eupd t = do
   ifBlocked t (\ _ _ -> tryInfer) $ {-else-} \ _ t' -> do
     caseMaybeM (isRecordType t') should $ \ (r, _pars, defn) -> do
       -- Bind the record value (before update) to a fresh @name@.
@@ -1073,13 +1095,13 @@ checkRecordUpdate cmp ei recexpr fs eupd t = do
         -- Desugar record update expression into record expression.
         let fs' = map (\ (FieldAssignment x e) -> (x, Just e)) fs
         let axs = map argFromDom $ recordFieldNames defn
-        es  <- orderFieldsWarn r (const Nothing) axs fs'
+        es  <- orderFieldsWarn style r (const Nothing) axs fs'
         let es'  = zipWith (replaceFields name ei) projs es
         let erec = A.Rec ei [ Left (FieldAssignment x e) | (Arg _ x, Just e) <- zip axs es' ]
         -- Call the type checker on the desugared syntax.
         checkExpr' cmp erec t
   where
-    replaceFields :: Name -> A.ExprInfo -> Arg A.QName -> Maybe A.Expr -> Maybe A.Expr
+    replaceFields :: Name -> A.RecInfo -> Arg A.QName -> Maybe A.Expr -> Maybe A.Expr
     replaceFields name ei (Arg ai p) Nothing | visible ai = Just $
       -- omitted visible fields remain unchanged: @{ ...; p = p name; ...}@
       -- (hidden fields are supposed to be inferred)
@@ -1166,18 +1188,22 @@ checkExpr' cmp e t =
         A.WithApp _ e es -> typeError $ NotImplemented "type checking of with application"
 
         e0@(A.App i q (Arg ai e))
-          | A.Quote _ <- unScope q, visible ai -> do
-          x <- quotedName $ namedThing e
-          ty <- qNameType
-          coerce cmp (quoteName x) ty t
+          | A.Quote _ <- unScope q -> do
+             if visible ai then do
+               x  <- quotedName $ namedThing e
+               ty <- qNameType
+               coerce cmp (quoteName x) ty t
+             else typeError $ CannotQuote CannotQuoteHidden
 
           | A.QuoteTerm _ <- unScope q -> do
-             (et, _) <- inferExpr (namedThing e)
-             doQuoteTerm cmp et t
+             if visible ai then do
+               (et, _) <- inferExpr (namedThing e)
+               doQuoteTerm cmp et t
+             else typeError $ CannotQuoteTerm CannotQuoteTermHidden
 
-        A.Quote{}     -> genericError "quote must be applied to a defined name"
-        A.QuoteTerm{} -> genericError "quoteTerm must be applied to a term"
-        A.Unquote{}   -> genericError "unquote must be applied to a term"
+        A.Quote{}     -> typeError $ CannotQuote CannotQuoteNothing
+        A.QuoteTerm{} -> typeError $ CannotQuoteTerm CannotQuoteTermNothing
+        A.Unquote{}   -> unquoteError NakedUnquote
 
         A.AbsurdLam i h -> checkAbsurdLambda cmp i h e t
 
@@ -1200,7 +1226,7 @@ checkExpr' cmp e t =
             coerce cmp v (sort s) t
 
         A.Generalized s e -> do
-            (_, t') <- generalizeType s $ isType_ e
+            (_, t') <- generalizeType (Set1.toSet s) $ isType_ e
             --noFunctionsIntoSize t' t'
             let s = getSort t'
                 v = unEl t'
@@ -1212,7 +1238,7 @@ checkExpr' cmp e t =
                 v = unEl t'
             coerce cmp v (sort s) t
 
-        A.Rec _ fs  -> checkRecordExpression cmp fs e t
+        A.Rec (A.RecInfo _ style) fs -> checkRecordExpression cmp style fs e t
 
         A.RecUpdate ei recexpr fs -> checkRecordUpdate cmp ei recexpr fs e t
 
@@ -1224,7 +1250,7 @@ checkExpr' cmp e t =
           else
             internalError "DontCare may only appear in irrelevant contexts"
 
-        A.Dot{} -> genericError "Invalid dotted expression"
+        A.Dot{} -> typeError InvalidDottedExpression
 
         -- Application
         _   | Application hd args <- appView e -> checkApplication cmp hd args e t
@@ -1600,22 +1626,36 @@ inferExprForWith (Arg info e) = verboseBracket "tc.with.infer" 20 "inferExprForW
 -- * Let bindings
 ---------------------------------------------------------------------------
 
-checkLetBindings :: Foldable t => t A.LetBinding -> TCM a -> TCM a
-checkLetBindings = foldr ((.) . checkLetBinding) id
+checkLetBindings' :: Foldable t => t A.LetBinding -> TCM a -> TCM a
+checkLetBindings' = foldr ((.) . checkLetBinding') id
 
-checkLetBinding :: A.LetBinding -> TCM a -> TCM a
+checkLetBinding' :: A.LetBinding -> TCM a -> TCM a
 
-checkLetBinding b@(A.LetBind i info x t e) ret =
-  traceCall (CheckLetBinding b) $ do
-    -- #4131: Only DontExpandLast if no user written type signature
-    let check | getOrigin info == Inserted = checkDontExpandLast
-              | otherwise                  = checkExpr'
-    t <- workOnTypes $ isType_ t
-    v <- applyModalityToContext info $ check CmpLeq e t
-    addLetBinding info UserWritten (A.unBind x) v t ret
+checkLetBinding' b@(A.LetBind i info x t e) ret = do
+  -- #4131: Only DontExpandLast if no user written type signature
+  let
+    check
+      | getOrigin info == Inserted = checkDontExpandLast
+      | otherwise                  = checkExpr'
 
-checkLetBinding b@(A.LetPatBind i p e) ret =
-  traceCall (CheckLetBinding b) $ do
+  t <- workOnTypes $ isType_ t
+  v <- applyModalityToContext info $ check CmpLeq e t
+
+  addLetBinding info UserWritten (A.unBind x) v t ret
+
+checkLetBinding' b@(A.LetAxiom i info x t) ret = do
+  t <- workOnTypes $ isType_ t
+  current <- currentModule
+
+  -- Note: if addConstant is called under a nontrivial context then
+  -- it'll automatically quantify the type we give it over the context
+  axn <- qualify current <$> freshName_ (A.unBind x)
+  addConstant' axn info t defaultAxiom
+
+  val <- Def axn . fmap Apply <$> getContextArgs
+  addLetBinding info UserWritten (A.unBind x) val t ret
+
+checkLetBinding' b@(A.LetPatBind i p e) ret = do
     p <- expandPatternSynonyms p
     (v, t) <- inferExpr' ExpandLast e
     let -- construct a type  t -> dummy  for use in checkLeftHandSide
@@ -1681,7 +1721,7 @@ checkLetBinding b@(A.LetPatBind i p e) ret =
         -- We add all the bindings to the context.
         foldr (uncurry4 $ flip addLetBinding UserWritten) ret $ List.zip4 infos xs sigma ts
 
-checkLetBinding (A.LetApply i erased x modapp copyInfo dir) ret = do
+checkLetBinding' (A.LetApply i erased x modapp copyInfo dir) ret = do
   -- Any variables in the context that doesn't belong to the current
   -- module should go with the new module.
   -- Example: @f x y = let open M t in u@.
@@ -1704,5 +1744,13 @@ checkLetBinding (A.LetApply i erased x modapp copyInfo dir) ret = do
     dir{ publicOpen = Nothing }
   withAnonymousModule x new ret
 -- LetOpen and LetDeclaredVariable are only used for highlighting.
-checkLetBinding A.LetOpen{} ret = ret
-checkLetBinding (A.LetDeclaredVariable _) ret = ret
+checkLetBinding' A.LetOpen{} ret = ret
+checkLetBinding' (A.LetDeclaredVariable _) ret = ret
+
+-- | Version of checkLetBinding which traces the fact that we're
+-- checking each binding in the Call.
+checkLetBinding :: A.LetBinding -> TCM a -> TCM a
+checkLetBinding b = traceCallCPS' (CheckLetBinding b) (checkLetBinding' b)
+
+checkLetBindings :: Foldable t => t A.LetBinding -> TCM a -> TCM a
+checkLetBindings = foldr ((.) . checkLetBinding) id

@@ -7,7 +7,6 @@ module Agda.TypeChecking.Empty
   , checkEmptyTel
   ) where
 
-import Control.Monad        ( void )
 import Control.Monad.Except ( MonadError(..) )
 
 import Data.Semigroup
@@ -100,7 +99,7 @@ checkEmptyType range t = do
 
     -- If t is a record type, see if any of the field types is empty
     Right (r, pars, def) -> do
-      ifNotM (isEtaRecordDef def) (return $ Left Fail) $
+      if not (isEtaRecordDef def) then return $ Left Fail else
          void <$> do checkEmptyTel range $ _recTel def `apply` pars
 
 -- | Check whether one of the types in the given telescope is constructor-less

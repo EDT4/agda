@@ -23,7 +23,7 @@ import Agda.Utils.Float (toStringWithoutDotZero)
 import Agda.Utils.Function
 import Agda.Utils.Functor
 import Agda.Utils.List  ( lastMaybe )
-import Agda.Utils.List1 ( List1, pattern (:|) )
+import Agda.Utils.List1 ( List1, pattern (:|), (<|) )
 import qualified Agda.Utils.List1 as List1
 import qualified Agda.Utils.List2 as List2
 import Agda.Utils.Maybe
@@ -221,14 +221,13 @@ instance Pretty a => Pretty (MaybePlaceholder a) where
   pretty (NoPlaceholder _ e) = pretty e
 
 instance Pretty Expr where
-    pretty e =
-        case e of
+    pretty = \case
             Ident x          -> pretty x
             KnownIdent nk x  -> annotateAspect (Asp.Name (Just nk) False) (pretty x)
             Lit _ l          -> pretty l
             QuestionMark _ n -> hlSymbol "?" <> maybe empty (text . show) n
             Underscore _ n   -> maybe underscore text n
-            App _ _ _        ->
+            e@(App _ _ _)    ->
                 case appView e of
                     AppView e1 args     ->
                         fsep $ pretty e1 : map pretty args
@@ -240,7 +239,7 @@ instance Pretty Expr where
             KnownOpApp nk _ q _ es -> fsep $ prettyOpApp (Asp.Name (Just nk) True) q es
 
             WithApp _ e es -> fsep $
-              pretty e : map ((hlSymbol "|" <+>) . pretty) es
+              pretty e <| fmap ((hlSymbol "|" <+>) . pretty) es
 
             HiddenArg _ e -> braces' $ pretty e
             InstanceArg _ e -> dbraces $ pretty e
@@ -277,8 +276,10 @@ instance Pretty Expr where
             DoubleDot _ e  -> hlSymbol ".." <> pretty e
             Absurd _  -> hlSymbol "()"
             Rec _ xs  -> sep [hlKeyword "record", bracesAndSemicolons (map pretty xs)]
+            RecWhere _ xs -> sep [hlKeyword "record" <+> hlKeyword "where", nest 2 (vcat $ map pretty xs)]
             RecUpdate _ e xs ->
               sep [hlKeyword "record" <+> pretty e, bracesAndSemicolons (map pretty xs)]
+            RecUpdateWhere _ e xs -> sep [hlKeyword "record" <+> pretty e <+> hlKeyword "where", nest 2 (vcat $ map pretty xs)]
             Quote _ -> hlKeyword "quote"
             QuoteTerm _ -> hlKeyword "quoteTerm"
             Unquote _  -> hlKeyword "unquote"
@@ -328,13 +329,17 @@ isLabeled x
   | otherwise              = Nothing
 
 instance Pretty a => Pretty (Binder' a) where
-  pretty (Binder mpat n) =
+  pretty (Binder mpat UserBinderName n) =
     applyWhenJust mpat (\ pat -> (<+> ("@" <+> parens (pretty pat)))) $ pretty n
+
+  pretty (Binder pat InsertedBinderName _) = case pat of
+    Just pat -> parens (pretty pat)
+    Nothing  -> __IMPOSSIBLE__
 
 instance Pretty NamedBinding where
   pretty (NamedBinding withH
            x@(Arg (ArgInfo h (Modality r q c) _o _fv (Annotation lock))
-               (Named _mn xb@(Binder _mp (BName _y _fix t _fin))))) =
+               (Named _mn xb@(Binder _mp _ (BName _y _fix t _fin))))) =
     applyWhen withH prH $
     applyWhenJust (isLabeled x) (\ l -> (text l <+>) . ("=" <+>)) (pretty xb)
       -- isLabeled looks at _mn and _y
@@ -441,7 +446,7 @@ instance Pretty LHSCore where
   pretty (LHSWith h wps ps) = if null ps then doc else
       sep $ parens doc : map (parens . pretty) ps
     where
-    doc = sep $ pretty h : map (("|" <+>) . pretty) wps
+    doc = sep $ pretty h <$ fmap (("|" <+>) . pretty) wps
   pretty (LHSEllipsis r p) = "..."
 
 instance Pretty ModuleApplication where
@@ -642,9 +647,9 @@ instance Pretty Pragma where
     pretty (RewritePragma _ _ xs)    =
       hsep [ "REWRITE", hsep $ map pretty xs ]
     pretty (CompilePragma _ b x e) =
-      hsep [ "COMPILE", text (rangedThing b), pretty x, textNonEmpty e ]
+      hsep [ "COMPILE", pretty (rangedThing b), pretty x, textNonEmpty e ]
     pretty (ForeignPragma _ b s) =
-      vcat $ text ("FOREIGN " ++ rangedThing b) : map text (lines s)
+      vcat $ hsep [ "FOREIGN", pretty (rangedThing b) ] : map text (lines s)
     pretty (StaticPragma _ i) =
       hsep $ ["STATIC", pretty i]
     pretty (InjectivePragma _ i) =
@@ -739,13 +744,13 @@ instance Pretty Pattern where
             LitP _ l        -> pretty l
             QuoteP _        -> "quote"
             RecP _ fs       -> sep [ "record", bracesAndSemicolons (map pretty fs) ]
-            EqualP _ es     -> sep $ [ parens (sep [pretty e1, "=", pretty e2]) | (e1,e2) <- es ]
+            EqualP _ es     -> sep $ for es \ (e1, e2) -> parens $ sep [pretty e1, "=", pretty e2]
             EllipsisP _ mp  -> "..."
             WithP _ p       -> "|" <+> pretty p
 
 prettyOpApp :: forall a .
-  Pretty a => Asp.Aspect -> QName -> [NamedArg (MaybePlaceholder a)] -> [Doc]
-prettyOpApp asp q es = merge [] $ prOp ms xs es
+  Pretty a => Asp.Aspect -> QName -> List1 (NamedArg (MaybePlaceholder a)) -> [Doc]
+prettyOpApp asp q es = merge [] $ prOp ms xs $ List1.toList es
   where
     -- ms: the module part of the name.
     ms = List1.init (qnameParts q)
