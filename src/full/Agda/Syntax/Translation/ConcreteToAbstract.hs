@@ -1202,14 +1202,20 @@ scopeCheckNiceModule r p e name tel open dir checkDs
       -- But open statements in the module telescope should
       -- only affect the current module!
       scopeCheckNiceModule noRange p e noName_ [] DoOpen (defaultImportDir { publicOpen = Just empty }) $ singleton <$>
-        scopeCheckNiceModule_ PublicAccess  -- See #4350
+        scopeCheckNiceModule' PublicAccess -- See #4350
 
   | otherwise = do
-        scopeCheckNiceModule_ p
+        scopeCheckNiceModule' p
   where
+    scopeCheckNiceModule' p = do
+      openPubAnonMod <- optOpenPubAnonMod <$> pragmaOptions
+      if openPubAnonMod && isNoName name
+      then scopeCheckNiceModule_ PublicAccess DoOpen (dir { publicOpen = Just empty }) -- The usual Agda behaviour
+      else scopeCheckNiceModule_ p open dir
+
     -- The actual workhorse:
-    scopeCheckNiceModule_ :: Access -> ScopeM A.Declaration
-    scopeCheckNiceModule_ p = do
+    scopeCheckNiceModule_ :: Access -> C.OpenShortHand -> C.ImportDirective -> ScopeM A.Declaration
+    scopeCheckNiceModule_ p open dir = do
 
       -- Check whether we are dealing with an anonymous module.
       (name, p') <- do

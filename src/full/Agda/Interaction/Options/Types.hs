@@ -205,6 +205,8 @@ data PragmaOptions = PragmaOptions
       -- constructors.
   , _optForcedArgumentRecursion   :: WithDefault 'True
       -- ^ Allow recursion on forced constructor arguments.
+  , _optOpenPubAnonMod            :: WithDefault 'True
+      -- ^ Always open and publicize anonymous modules.
   }
   deriving (Show, Eq, Generic)
 

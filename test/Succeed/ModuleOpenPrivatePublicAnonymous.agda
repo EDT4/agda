@@ -1,3 +1,6 @@
+{-# OPTIONS --no-open-public-anonymous-modules #-}
+module ModuleOpenPrivatePublicAnonymous where
+
 module Test where
   postulate A : Set
 

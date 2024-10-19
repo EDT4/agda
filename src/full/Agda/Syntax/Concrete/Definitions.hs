@@ -1488,7 +1488,7 @@ notSoNiceDeclarations = \case
     PrimitiveFunction _ _ _ x e      -> singleton $ Primitive empty $ singleton $ TypeSig (argInfo e) empty x (unArg e)
     NiceMutual r _ _ _ ds            -> singleton $ Mutual r $ List1.concat $ fmap notSoNiceDeclarations ds
     NiceLoneConstructor r ds         -> singleton $ LoneConstructor r $ List1.concat $ fmap notSoNiceDeclarations ds
-    NiceModule r _ _ e x tel ds o i ds -> singleton $ Module r e x tel ds o i ds
+    NiceModule r _ _ e x tel o i ds -> singleton $ Module r e x tel o i ds
     NiceModuleMacro r _ e x ma o dir
                                      -> singleton $ ModuleMacro r e x ma o dir
     NiceOpen r x dir                 -> singleton $ Open r x dir

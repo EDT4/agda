@@ -108,6 +108,7 @@ module Agda.Interaction.Options.Base
     , lensOptSaveMetas
     , lensOptShowIdentitySubstitutions
     , lensOptKeepCoveringClauses
+    , lensOptOpenPubAnonMod
     -- * Boolean accessors to 'PragmaOptions' collapsing default
     , optShowImplicit
     , optShowGeneralized
@@ -167,6 +168,7 @@ module Agda.Interaction.Options.Base
     , optKeepCoveringClauses
     , optLargeIndices
     , optForcedArgumentRecursion
+    , optOpenPubAnonMod
     -- * Non-boolean accessors to 'PragmaOptions'
     , optConfluenceCheck
     , optCubical
@@ -337,6 +339,7 @@ optShowIdentitySubstitutions :: PragmaOptions -> Bool
 optKeepCoveringClauses       :: PragmaOptions -> Bool
 optLargeIndices              :: PragmaOptions -> Bool
 optForcedArgumentRecursion   :: PragmaOptions -> Bool
+optOpenPubAnonMod            :: PragmaOptions -> Bool
 
 optShowImplicit              = collapseDefault . _optShowImplicit
 optShowGeneralized           = collapseDefault . _optShowGeneralized
@@ -400,6 +403,7 @@ optShowIdentitySubstitutions = collapseDefault . _optShowIdentitySubstitutions
 optKeepCoveringClauses       = collapseDefault . _optKeepCoveringClauses
 optLargeIndices              = collapseDefault . _optLargeIndices
 optForcedArgumentRecursion   = collapseDefault . _optForcedArgumentRecursion
+optOpenPubAnonMod            = collapseDefault . _optOpenPubAnonMod
 
 -- Collapse defaults (non-Bool)
 
@@ -638,6 +642,9 @@ lensOptLargeIndices f o = f (_optLargeIndices o) <&> \ i -> o{ _optLargeIndices 
 lensOptForcedArgumentRecursion :: Lens' PragmaOptions _
 lensOptForcedArgumentRecursion f o = f (_optForcedArgumentRecursion o) <&> \ i -> o{ _optForcedArgumentRecursion = i }
 
+lensOptOpenPubAnonMod :: Lens' PragmaOptions _
+lensOptOpenPubAnonMod f o = f (_optOpenPubAnonMod o) <&> \ i -> o{ _optOpenPubAnonMod = i }
+
 
 -- | Map a function over the long options. Also removes the short options.
 --   Will be used to add the plugin name to the plugin options.
@@ -749,6 +756,7 @@ defaultPragmaOptions = PragmaOptions
   , _optKeepCoveringClauses       = Default
   , _optForcedArgumentRecursion   = Default
   , _optLargeIndices              = Default
+  , _optOpenPubAnonMod            = Default
   }
 
 -- | The options parse monad 'OptM' collects warnings that are not discarded
@@ -1628,6 +1636,9 @@ pragmaOptions = concat
                     $ Just "always check that constructor arguments live in universes compatible with that of the datatype"
   , pragmaFlag      "forced-argument-recursion" lensOptForcedArgumentRecursion
                     "allow recursion on forced constructor arguments" ""
+                    Nothing
+  , pragmaFlag      "open-public-anonymous-modules" lensOptOpenPubAnonMod
+                    "always open and publicize anonymous modules" ""
                     Nothing
   ]
 
