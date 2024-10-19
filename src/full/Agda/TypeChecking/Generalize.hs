@@ -395,7 +395,8 @@ computeGeneralization genRecMeta nameMap allmetas = postponeInstanceConstraints 
             -- If we solved the parent with a new meta use the parent name for that.
             [m] | MetaV{} <- instBody inst -> setMetaNameSuggestion m parentName
             -- Otherwise suffix with a number.
-            ms -> zipWithM_ (\ i m -> setMetaNameSuggestion m (parentName ++ "." ++ show i)) [1..] ms
+            -- ms -> zipWithM_ (\ i m -> setMetaNameSuggestion m (parentName ++ "." ++ show i)) [1..] ms -- TODO: This is the original line. The line below applies hideOrKeepInstance on all inherited generalised vars as a quickfix for issue #7047 (implicit hiding is how variables are usually defined, so it minimises the probability of one stumbling upon the issue).
+            ms -> zipWithM_ (\ i m -> setMetaNameSuggestion m (parentName ++ "." ++ show i) >> getMetaGeneralizableArgInfo m >>= setMetaGeneralizableArgInfo m . hideOrKeepInstance) [1..] ms
         return $ Set.fromList metas
       _ -> __IMPOSSIBLE__
 
@@ -451,8 +452,9 @@ computeGeneralization genRecMeta nameMap allmetas = postponeInstanceConstraints 
     args <- getContextArgs
     concat <$> forM sortedMetas \ m -> do
       mv <- lookupLocalMeta m
+      allowExplGens <- optAllowExplicitGenVars <$> pragmaOptions
       let info =
-            (hideOrKeepInstance $
+            ((if allowExplGens then id else hideOrKeepInstance) $
             getArgInfo $ miGeneralizable $ mvInfo mv) { argInfoOrigin = Generalization }
           HasType{ jMetaType = t } = mvJudgement mv
           perm = mvPermutation mv
@@ -884,7 +886,7 @@ createGenValue x = setCurrentRange x $ do
     TelV tel _ = telView' ty
     -- Generalizable variables are never explicit, so if they're given as
     -- explicit we default to hidden.
-    argTel     = telFromList $ map hideExplicit $ take nGen $ telToList tel
+    argTel     = telFromList $ take nGen $ telToList tel
 
   args <- newTelMeta argTel
   metaType <- piApplyM ty args
@@ -910,7 +912,7 @@ createGenValue x = setCurrentRange x $ do
 
   -- Update the ArgInfos for the named meta. The argument metas are
   -- created with the correct ArgInfo.
-  setMetaGeneralizableArgInfo m $ hideExplicit (defArgInfo def)
+  setMetaGeneralizableArgInfo m (defArgInfo def)
 
   reportSDoc "tc.generalize" 50 $ vcat
     [ "created metas for generalized variable" <+> prettyTCM x

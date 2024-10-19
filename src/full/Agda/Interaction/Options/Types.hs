@@ -205,6 +205,8 @@ data PragmaOptions = PragmaOptions
       -- constructors.
   , _optForcedArgumentRecursion   :: WithDefault 'True
       -- ^ Allow recursion on forced constructor arguments.
+  , _optAllowExplicitGenVars      :: WithDefault 'False
+      -- ^ Allow the use of explicit generalized variables.
   }
   deriving (Show, Eq, Generic)
 

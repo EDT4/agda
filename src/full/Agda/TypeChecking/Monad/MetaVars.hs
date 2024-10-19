@@ -486,6 +486,12 @@ setMetaNameSuggestion mi s = unless (null s || isUnderscore s) $ do
   updateMetaVar mi $ \ mvar ->
     mvar { mvInfo = (mvInfo mvar) { miNameSuggestion = s }}
 
+getMetaGeneralizableArgInfo ::
+  (HasCallStack, MonadDebug m, ReadTCState m) =>
+  MetaId -> m ArgInfo
+getMetaGeneralizableArgInfo mi =
+  getArgInfo . miGeneralizable . mvInfo <$> lookupLocalMeta mi
+
 -- | Change the ArgInfo that will be used when generalizing over this
 -- local meta-variable.
 setMetaGeneralizableArgInfo :: MonadMetaSolver m => MetaId -> ArgInfo -> m ()
