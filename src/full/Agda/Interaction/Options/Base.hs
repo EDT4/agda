@@ -109,6 +109,7 @@ module Agda.Interaction.Options.Base
     , lensOptShowIdentitySubstitutions
     , lensOptKeepCoveringClauses
     , lensOptAllowExplicitGenVars
+    , lensOptOpenPubAnonMod
     -- * Boolean accessors to 'PragmaOptions' collapsing default
     , optShowImplicit
     , optShowGeneralized
@@ -169,6 +170,7 @@ module Agda.Interaction.Options.Base
     , optLargeIndices
     , optForcedArgumentRecursion
     , optAllowExplicitGenVars
+    , optOpenPubAnonMod
     -- * Non-boolean accessors to 'PragmaOptions'
     , optConfluenceCheck
     , optCubical
@@ -340,6 +342,7 @@ optKeepCoveringClauses       :: PragmaOptions -> Bool
 optLargeIndices              :: PragmaOptions -> Bool
 optForcedArgumentRecursion   :: PragmaOptions -> Bool
 optAllowExplicitGenVars      :: PragmaOptions -> Bool
+optOpenPubAnonMod            :: PragmaOptions -> Bool
 
 optShowImplicit              = collapseDefault . _optShowImplicit
 optShowGeneralized           = collapseDefault . _optShowGeneralized
@@ -404,6 +407,7 @@ optKeepCoveringClauses       = collapseDefault . _optKeepCoveringClauses
 optLargeIndices              = collapseDefault . _optLargeIndices
 optForcedArgumentRecursion   = collapseDefault . _optForcedArgumentRecursion
 optAllowExplicitGenVars      = collapseDefault . _optAllowExplicitGenVars
+optOpenPubAnonMod            = collapseDefault . _optOpenPubAnonMod
 
 -- Collapse defaults (non-Bool)
 
@@ -645,6 +649,10 @@ lensOptForcedArgumentRecursion f o = f (_optForcedArgumentRecursion o) <&> \ i -
 lensOptAllowExplicitGenVars :: Lens' PragmaOptions _
 lensOptAllowExplicitGenVars f o = f (_optAllowExplicitGenVars o) <&> \ i -> o{ _optAllowExplicitGenVars = i }
 
+lensOptOpenPubAnonMod :: Lens' PragmaOptions _
+lensOptOpenPubAnonMod f o = f (_optOpenPubAnonMod o) <&> \ i -> o{ _optOpenPubAnonMod = i }
+
+
 -- | Map a function over the long options. Also removes the short options.
 --   Will be used to add the plugin name to the plugin options.
 mapFlag :: (String -> String) -> OptDescr a -> OptDescr a
@@ -756,6 +764,7 @@ defaultPragmaOptions = PragmaOptions
   , _optForcedArgumentRecursion   = Default
   , _optLargeIndices              = Default
   , _optAllowExplicitGenVars      = Default
+  , _optOpenPubAnonMod            = Default
   }
 
 -- | The options parse monad 'OptM' collects warnings that are not discarded
@@ -1638,6 +1647,9 @@ pragmaOptions = concat
                     Nothing
   , pragmaFlag      "allow-explicit-generalizations" lensOptAllowExplicitGenVars
                     "enable the use of explicit generalized variables" ""
+                    Nothing
+  , pragmaFlag      "open-public-anonymous-modules" lensOptOpenPubAnonMod
+                    "always open and publicize anonymous modules" ""
                     Nothing
   ]
 

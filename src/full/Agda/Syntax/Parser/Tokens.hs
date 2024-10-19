@@ -15,7 +15,7 @@ data Keyword
         | KwPostulate | KwAbstract | KwPrivate | KwInstance
         | KwInterleaved | KwMutual
         | KwOverlap
-        | KwOpen | KwImport | KwModule | KwPrimitive | KwMacro
+        | KwOpen | KwImport | KwModule | KwSection | KwPrimitive | KwMacro
         | KwInfix | KwInfixL | KwInfixR | KwWith | KwRewrite
         | KwForall | KwRecord | KwConstructor | KwField
         | KwInductive | KwCoInductive

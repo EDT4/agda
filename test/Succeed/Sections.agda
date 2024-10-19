@@ -131,5 +131,5 @@ test₁₆-test _ = refl
 test₁₇ : (f : Nat → Nat) → f ≡ suc → Set₁
 test₁₇ .(1 +_) refl = Set
 
-test₁₈ : (section : Nat) → section +_ ≡ λ x → section + x
-test₁₈ section = refl
+test₁₈ : (s : Nat) → s +_ ≡ λ x → s + x
+test₁₈ s = refl

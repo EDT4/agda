@@ -31,7 +31,7 @@ module Helpers where
                     ; (i = i0) → outS u0 })
            (outS {φ = φ} u0)
 
-    module _ {ℓ} {A : Set ℓ} where
+    section {ℓ} {A : Set ℓ} where
       refl : {x : A} → x ≡ x
       refl {x = x} = λ _ → x
 

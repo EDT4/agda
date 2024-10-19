@@ -260,7 +260,8 @@ instance ExprLike Declaration where
      e@Import{}                -> e
      ModuleMacro r e n es op dir
                                -> ModuleMacro r e n (mapE es) op dir
-     Module r e n tel ds       -> Module r e n (mapE tel)              $ mapE ds
+     Module r e n tel op dir ds
+                               -> Module r e n (mapE tel) op dir (mapE ds)
      UnquoteDecl r x e         -> UnquoteDecl r x (mapE e)
      UnquoteDef r x e          -> UnquoteDef r x (mapE e)
      UnquoteData r x xs e      -> UnquoteData r x xs (mapE e)
@@ -310,7 +311,7 @@ instance FoldDecl Declaration where
     InterleavedMutual _ ds  -> foldDecl f ds
     LoneConstructor _   ds  -> foldDecl f ds
     Mutual _            ds  -> foldDecl f ds
-    Module _ _ _ _      ds  -> foldDecl f ds
+    Module _ _ _ _ _ _  ds  -> foldDecl f ds
     Macro _             ds  -> foldDecl f ds
     Record _ _ _ _ _ _  ds  -> foldDecl f ds
     RecordDef _ _ _ _   ds  -> foldDecl f ds
@@ -364,7 +365,7 @@ instance TraverseDecl Declaration where
       InterleavedMutual r ds     -> InterleavedMutual r     <$> preTraverseDecl f ds
       LoneConstructor r   ds     -> LoneConstructor r       <$> preTraverseDecl f ds
       Mutual r            ds     -> Mutual r                <$> preTraverseDecl f ds
-      Module r er n tel   ds     -> Module r er n tel       <$> preTraverseDecl f ds
+      Module r er n tel o i ds   -> Module r er n tel o i   <$> preTraverseDecl f ds
       Macro r             ds     -> Macro r                 <$> preTraverseDecl f ds
       Opaque r ds                -> Opaque r                <$> preTraverseDecl f ds
       Record r er n dir tel t ds -> Record r er n dir tel t <$> preTraverseDecl f ds

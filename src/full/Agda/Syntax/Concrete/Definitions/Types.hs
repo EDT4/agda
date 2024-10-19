@@ -54,7 +54,7 @@ data NiceDeclaration
   | PrimitiveFunction Range Access IsAbstract Name (Arg Expr)
   | NiceMutual KwRange TerminationCheck CoverageCheck PositivityCheck [NiceDeclaration]
   | NiceModule Range Access IsAbstract Erased QName Telescope
-      [Declaration]
+      OpenShortHand ImportDirective [Declaration]
   | NiceModuleMacro Range Access Erased Name ModuleApplication
       OpenShortHand ImportDirective
   | NiceOpen Range QName ImportDirective
@@ -206,7 +206,7 @@ instance HasRange NiceDeclaration where
   getRange (Axiom r _ _ _ _ _ _)           = r
   getRange (NiceField r _ _ _ _ _ _)       = r
   getRange (NiceMutual kwr _ _ _ ds)       = fuseRange kwr ds
-  getRange (NiceModule r _ _ _ _ _ _ )     = r
+  getRange (NiceModule r _ _ _ _ _ _ _ _)  = r
   getRange (NiceModuleMacro r _ _ _ _ _ _) = r
   getRange (NiceOpen r _ _)                = r
   getRange (NiceImport r _ _ _ _)          = r
@@ -234,7 +234,7 @@ instance Pretty NiceDeclaration where
     PrimitiveFunction _ _ _ x _    -> text "primitive" <+> pretty x
     NiceMutual{}                   -> text "mutual"
     NiceOpaque _ _ ds              -> text "opaque" <+> nest 2 (vcat (map pretty ds))
-    NiceModule _ _ _ _ x _ _       -> text "module" <+> pretty x <+> text "where"
+    NiceModule _ _ _ _ x _ _ _ _   -> text "module" <+> pretty x <+> text "where"
     NiceModuleMacro _ _ _ x _ _ _  -> text "module" <+> pretty x <+> text "= ..."
     NiceOpen _ x _                 -> text "open" <+> pretty x
     NiceImport _ x _ _ _           -> text "import" <+> pretty x

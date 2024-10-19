@@ -76,7 +76,7 @@ import Agda.Utils.Impossible
 %name exprParser Expr
 %name exprWhereParser ExprWhere
 %name moduleParser File
-%name moduleNameParser ModuleName
+%name moduleNameParser ModuleQName
 %name funclauseParser FunClause
 %name holeContentParser HoleContent
 
@@ -128,6 +128,7 @@ import Agda.Utils.Impossible
     'let'                     { TokKeyword KwLet $$ }
     'macro'                   { TokKeyword KwMacro $$ }
     'module'                  { TokKeyword KwModule $$ }
+    'section'                 { TokKeyword KwSection $$ }
     'interleaved'             { TokKeyword KwInterleaved $$ }
     'mutual'                  { TokKeyword KwMutual $$ }
     'no-eta-equality'         { TokKeyword KwNoEta $$ }
@@ -280,6 +281,7 @@ Token
     | 'record'                  { TokKeyword KwRecord $1 }
     | 'renaming'                { TokKeyword KwRenaming $1 }
     | 'rewrite'                 { TokKeyword KwRewrite $1 }
+    | 'section'                 { TokKeyword KwSection $1 }
     | 'syntax'                  { TokKeyword KwSyntax $1 }
     | 'tactic'                  { TokKeyword KwTactic $1 }
     | 'to'                      { TokKeyword KwTo $1 }
@@ -500,10 +502,18 @@ QId : q_id  {% mkQName $1 }
     | Id    { QName $1 }
 
 
--- A module name is just a qualified name
-ModuleName :: { QName }
-ModuleName : QId { $1 }
+Underscore :: { Name }
+Underscore : '_' { noName (getRange $1) }
 
+-- An unqualified module name is either a name or an underscore
+ModuleName :: { Name }
+ModuleName : Id { $1 }
+           | Underscore { $1 }
+
+-- A module name is either a qualified name or an underscore
+ModuleQName :: { QName }
+ModuleQName : QId { $1 }
+            | Underscore { QName $1 }
 
 -- A binding variable. Can be '_'
 BId :: { Name }
@@ -805,7 +815,7 @@ RecordAssignment
 
 ModuleAssignment :: { ModuleAssignment }
 ModuleAssignment
-  : ModuleName OpenArgs ImportDirective  { ModuleAssignment $1 $2 $3 }
+  : ModuleQName OpenArgs ImportDirective  { ModuleAssignment $1 $2 $3 }
 
 FieldAssignments :: { [FieldAssignment] }
 FieldAssignments
@@ -1160,11 +1170,7 @@ WhereClause
     : {- empty -} { NoWhere }
     |                                'where' Declarations0
         { AnyWhere  (getRange $1) $2 }
-    | 'module' Attributes Id         'where' Declarations0
-         {% onlyErased $2 >>= \erased ->
-            return $ SomeWhere (getRange ($1,$4)) erased
-                       $3 PublicAccess $5 }
-    | 'module' Attributes Underscore 'where' Declarations0
+    | 'module' Attributes ModuleName 'where' Declarations0
          {% onlyErased $2 >>= \erased ->
             return $ SomeWhere (getRange ($1,$4)) erased
                        $3 PublicAccess $5 }
@@ -1198,6 +1204,7 @@ Declaration
     | Open            { $1 }
     | ModuleMacro     { singleton $1 }
     | Module          { singleton $1 }
+    | Section         { singleton $1 }
     | Pragma          { singleton $1 }
     | Syntax          { singleton $1 }
     | PatternSyn      { singleton $1 }
@@ -1465,7 +1472,7 @@ MaybeOpen : 'open'      { Just (getRange $1) }
 
 -- Open
 Open :: { List1 Declaration }
-Open : MaybeOpen 'import' ModuleName OpenArgs ImportDirective {%
+Open : MaybeOpen 'import' ModuleQName OpenArgs ImportDirective {%
     let
     { doOpen = maybe DontOpen (const DoOpen) $1
     ; m   = $3
@@ -1519,7 +1526,7 @@ Open : MaybeOpen 'import' ModuleName OpenArgs ImportDirective {%
               []
       }
   }
-  |'open' ModuleName OpenArgs ImportDirective {
+  |'open' ModuleQName OpenArgs ImportDirective {
     let
     { m   = $2
     ; es  = $3
@@ -1536,7 +1543,7 @@ Open : MaybeOpen 'import' ModuleName OpenArgs ImportDirective {%
                  ]
       }
   }
-  | 'open' ModuleName '{{' '...' DoubleCloseBrace ImportDirective {
+  | 'open' ModuleQName '{{' '...' DoubleCloseBrace ImportDirective {
     let r = getRange $2 in singleton $
       Private empty Inserted
       [ ModuleMacro r defaultErased (noName $ beginningOf $ getRange $2)
@@ -1549,18 +1556,18 @@ OpenArgs : {- empty -}    { [] }
          | Expr3_P(RecordUpdate) OpenArgs { $1 : $2 }
 
 ModuleApplication :: { Telescope -> Parser ModuleApplication }
-ModuleApplication : ModuleName '{{' '...' DoubleCloseBrace { (\ts ->
+ModuleApplication : ModuleQName '{{' '...' DoubleCloseBrace { (\ts ->
                     if null ts then return $ RecordModuleInstance (getRange ($1,$2,$3,$4)) $1
                     else parseError "No bindings allowed for record module with non-canonical implicits" )
                     }
-                  | ModuleName OpenArgs {
+                  | ModuleQName OpenArgs {
                     (\ts -> return $ SectionApp (getRange ($1, $2)) ts $1 $2) }
 
 
 -- Module instantiation
 ModuleMacro :: { Declaration }
 ModuleMacro
-  : 'module' Attributes ModuleName TypedUntypedBindings '='
+  : 'module' Attributes ModuleQName TypedUntypedBindings '='
       ModuleApplication ImportDirective
     {% do { ma     <- $6 (map addType $4)
           ; erased <- onlyErased $2
@@ -1569,30 +1576,37 @@ ModuleMacro
                        erased name ma DontOpen $7
           }
     }
-  | 'open' 'module' Attributes Id TypedUntypedBindings '='
+  | 'open' 'module' Attributes ModuleQName TypedUntypedBindings '='
       ModuleApplication ImportDirective
     {% do { ma     <- $7 (map addType $5)
           ; erased <- onlyErased $3
+          ; name   <- ensureUnqual $4
           ; return $ ModuleMacro (getRange ($1, $2, $3, $4, ma, $8))
-                       erased $4 ma DoOpen $8
+                       erased name ma DoOpen $8
           } }
 
 -- Module
 Module :: { Declaration }
 Module
-  : 'module' Attributes ModuleName TypedUntypedBindings 'where'
+  : 'module' Attributes ModuleQName TypedUntypedBindings 'where'
       Declarations0
     {% onlyErased $2 >>= \erased ->
        return $ Module (getRange ($1,$2,$3,$4,$5,$6)) erased
-                  $3 (map addType $4) $6 }
-  | 'module' Attributes Underscore TypedUntypedBindings 'where'
+                  $3 (map addType $4) DontOpen defaultImportDir $6 }
+  | 'open' 'module' Attributes ModuleQName TypedUntypedBindings ImportDirective 'where'
       Declarations0
-    {% onlyErased $2 >>= \erased ->
-       return $ Module (getRange ($1,$2,$3,$4,$5,$6)) erased
-                  (QName $3) (map addType $4) $6 }
+    {% onlyErased $3 >>= \erased ->
+       return $ Module (getRange ($1,$2,$3,$4,$5,$6,$7,$8)) erased
+                  $4 (map addType $5) DoOpen $6 $8 }
 
-Underscore :: { Name }
-Underscore : '_' { noName (getRange $1) }
+-- Section
+Section :: { Declaration }
+Section
+  : 'section' Attributes TypedUntypedBindings 'where'
+      Declarations0
+    {% onlyErased $2 >>= \erased ->
+       return $ Module (getRange ($1,$2,$3,$4,$5)) erased
+                  (QName(noName noRange)) (map addType $3) DoOpen (defaultImportDir { publicOpen = Just empty }) $5 }
 
 TopLevel :: { [Declaration] }
 TopLevel : TopDeclarations { figureOutTopLevelModule $1 }

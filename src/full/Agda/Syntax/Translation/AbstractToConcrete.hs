@@ -1268,7 +1268,7 @@ instance ToConcrete A.Declaration where
     x <- toConcrete x
     bindToConcrete tel $ \ tel -> do
       ds <- declsToConcrete ds
-      return [ C.Module (getRange i) erased x (catMaybes tel) ds ]
+      return [ C.Module (getRange i) erased x (catMaybes tel) DontOpen defaultImportDir ds ]
 
   toConcrete (A.Apply i erased x modapp _ _) = do
     x  <- unsafeQNameToName <$> toConcrete x

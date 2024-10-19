@@ -1186,10 +1186,12 @@ scopeCheckNiceModule
   -> Erased
   -> C.Name
   -> C.Telescope
+  -> C.OpenShortHand
+  -> C.ImportDirective
   -> ScopeM [A.Declaration]
   -> ScopeM A.Declaration
        -- ^ The returned declaration is an 'A.Section'.
-scopeCheckNiceModule r p e name tel checkDs
+scopeCheckNiceModule r p e name tel open dir checkDs
   | telHasOpenStmsOrModuleMacros tel = do
       -- Andreas, 2013-12-10:
       -- If the module telescope contains open statements
@@ -1199,23 +1201,29 @@ scopeCheckNiceModule r p e name tel checkDs
       -- identifiers in the parent scope of the current module.
       -- But open statements in the module telescope should
       -- only affect the current module!
-      scopeCheckNiceModule noRange p e noName_ [] $ singleton <$>
-        scopeCheckNiceModule_ PublicAccess  -- See #4350
+      scopeCheckNiceModule noRange p e noName_ [] DoOpen (defaultImportDir { publicOpen = Just empty }) $ singleton <$>
+        scopeCheckNiceModule' PublicAccess -- See #4350
 
   | otherwise = do
-        scopeCheckNiceModule_ p
+        scopeCheckNiceModule' p
   where
+    scopeCheckNiceModule' p = do
+      openPubAnonMod <- optOpenPubAnonMod <$> pragmaOptions
+      if openPubAnonMod && isNoName name
+      then scopeCheckNiceModule_ PublicAccess DoOpen (dir { publicOpen = Just empty }) -- The usual Agda behaviour
+      else scopeCheckNiceModule_ p open dir
+
     -- The actual workhorse:
-    scopeCheckNiceModule_ :: Access -> ScopeM A.Declaration
-    scopeCheckNiceModule_ p = do
+    scopeCheckNiceModule_ :: Access -> C.OpenShortHand -> C.ImportDirective -> ScopeM A.Declaration
+    scopeCheckNiceModule_ p open dir = do
 
       -- Check whether we are dealing with an anonymous module.
-      -- This corresponds to a Coq/LEGO section.
-      (name, p', open) <- do
+      (name, p') <- do
         if isNoName name then do
           (i :: NameId) <- fresh
-          return (C.NoName (getRange name) i, privateAccessInserted, True)
-         else return (name, p, False)
+          return (C.NoName (getRange name) i, privateAccessInserted)
+        else
+          return (name, p)
 
       -- Check and bind the module, using the supplied check for its contents.
       aname <- toAbstract (NewModuleName name)
@@ -1223,12 +1231,10 @@ scopeCheckNiceModule r p e name tel checkDs
         scopeCheckModule r e (C.QName name) aname tel checkDs
       bindModule p' name aname
 
-      -- If the module was anonymous open it public
-      -- unless it's private, in which case we just open it (#2099)
-      when open $
+      -- Check whether the module should be opened.
+      when (open == DoOpen) $
        void $ -- We can discard the returned default A.ImportDirective.
-        openModule TopOpenModule (Just aname) (C.QName name) $
-          defaultImportDir { publicOpen = boolToMaybe (p == PublicAccess) empty }
+        openModule TopOpenModule (Just aname) (C.QName name) dir
       return d
 
 -- | Check whether a telescope has open declarations or module macros.
@@ -1361,7 +1367,7 @@ instance ToAbstract (TopLevel [C.Declaration]) where
         (_, C.Module{} : d : _) -> setCurrentRange d $ typeError DeclarationsAfterTopLevelModule
 
         -- Otherwise, proceed.
-        (outsideDecls, [ C.Module r e m0 tel insideDecls ]) -> do
+        (outsideDecls, [ C.Module r e m0 tel _ _ insideDecls ]) -> do
           -- If the module name is _ compute the name from the file path
           (m, top) <- if isNoName m0
                 then do
@@ -1374,7 +1380,7 @@ instance ToAbstract (TopLevel [C.Declaration]) where
                   -- If the first module of the insideDecls has the same name as the file,
                   -- report an error.
                   case flip span insideDecls $ \case { C.Module{} -> False; _ -> True } of
-                    (ds0, (C.Module _ _ m1 _ _ : _))
+                    (ds0, (C.Module _ _ m1 _ _ _ _ : _))
                        | rawTopLevelModuleNameForQName m1 ==
                          rawTopLevelModuleName expectedMName
                          -- If the anonymous module comes from the user,
@@ -2016,14 +2022,14 @@ instance ToAbstract NiceDeclaration where
         let dir' = RecordDirectives ind eta pat cm'
         return [ A.RecDef (mkDefInfoInstance x f PublicAccess a inst NotMacroDef r) x' uc dir' params contel afields ]
 
-    NiceModule r p a e x@(C.QName name) tel ds -> notAffectedByOpaque $ do
+    NiceModule r p a e x@(C.QName name) tel open dir ds -> notAffectedByOpaque $ do
       reportSDoc "scope.decl" 70 $ vcat $
         [ text $ "scope checking NiceModule " ++ prettyShow x
         ]
 
       adecl <- traceCall (ScopeCheckDeclaration $
-                          NiceModule r p a e x tel []) $ do
-        scopeCheckNiceModule r p e name tel $
+                          NiceModule r p a e x tel open dir []) $ do
+        scopeCheckNiceModule r p e name tel open dir $
           toAbstract (Declarations ds)
 
       reportSDoc "scope.decl" 70 $ vcat $
@@ -2032,7 +2038,7 @@ instance ToAbstract NiceDeclaration where
         ]
       return [ adecl ]
 
-    NiceModule _ _ _ _ m@C.Qual{} _ _ -> typeError QualifiedLocalModule
+    NiceModule _ _ _ _ m@C.Qual{} _ _ _ _ -> typeError QualifiedLocalModule
 
     NiceModuleMacro r p e x modapp open dir -> do
       reportSDoc "scope.decl" 70 $ vcat $
