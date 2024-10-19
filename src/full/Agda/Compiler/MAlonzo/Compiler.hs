@@ -7,7 +7,6 @@ module Agda.Compiler.MAlonzo.Compiler
 
 import Control.Arrow (second)
 import Control.DeepSeq
-import Control.Monad
 import Control.Monad.Except   ( throwError )
 import Control.Monad.IO.Class ( MonadIO(..) )
 import Control.Monad.Reader   ( MonadReader(..), asks, ReaderT, runReaderT, withReaderT)
@@ -61,7 +60,7 @@ import Agda.Syntax.TopLevelModuleName
 
 import Agda.TypeChecking.Datatypes
 import Agda.TypeChecking.Primitive (getBuiltinName)
-import Agda.TypeChecking.Pretty hiding ((<>))
+import Agda.TypeChecking.Pretty
 import Agda.TypeChecking.Substitute
 import Agda.TypeChecking.Telescope
 import Agda.TypeChecking.Warnings
@@ -303,6 +302,7 @@ ghcPreCompile flags = do
       , builtinAgdaTCMWorkOnTypes
       , builtinAgdaTCMRunSpeculative
       , builtinAgdaTCMExec
+      , builtinAgdaTCMCheckFromString
       , builtinAgdaTCMGetInstances
       , builtinAgdaTCMSolveInstances
       , builtinAgdaTCMPragmaForeign
@@ -460,7 +460,7 @@ ghcMayEraseType q = getHaskellPragma q <&> \case
 -- Compilation ------------------------------------------------------------
 
 imports ::
-  BuiltinThings PrimFun -> Set TopLevelModuleName -> [Definition] ->
+  BuiltinThings -> Set TopLevelModuleName -> [Definition] ->
   [HS.ImportDecl]
 imports builtinThings usedModules defs = hsImps ++ imps where
   hsImps :: [HS.ImportDecl]

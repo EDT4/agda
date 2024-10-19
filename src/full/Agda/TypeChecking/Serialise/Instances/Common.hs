@@ -11,27 +11,25 @@ import Control.Monad.Reader       ( MonadReader(..), asks )
 import Control.Monad.State.Strict ( gets, modify )
 
 import Data.Array.IArray
-import Data.Word
 import qualified Data.Foldable as Fold
 import Data.Hashable
+import Data.HashMap.Strict (HashMap)
+import qualified Data.HashMap.Strict as HMap
 import Data.Int (Int32)
-
+import Data.IntSet (IntSet)
+import qualified Data.IntSet as IntSet
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Set (Set)
-import qualified Data.IntSet as IntSet
-import Data.IntSet (IntSet)
-import qualified Data.Set as Set
 import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
+import Data.Set (Set)
+import qualified Data.Set as Set
 import Data.Strict.Tuple (Pair(..))
 import qualified Data.Text      as T
 import qualified Data.Text.Lazy as TL
 import Data.Typeable
-import Data.HashMap.Strict (HashMap)
-import qualified Data.HashMap.Strict as HMap
-
 import Data.Void
+import Data.Word (Word32, Word64)
 
 import Agda.Syntax.Common
 import Agda.Syntax.Builtin
@@ -56,6 +54,8 @@ import qualified Agda.Utils.List2 as List2
 import qualified Agda.Utils.Maybe.Strict as Strict
 import Agda.Utils.Null
 import Agda.Utils.SmallSet (SmallSet(..))
+import Agda.Utils.Set1 (Set1)
+import qualified Agda.Utils.Set1 as Set1
 import Agda.Utils.Trie (Trie(..))
 import Agda.Utils.WithDefault
 
@@ -79,21 +79,27 @@ instance EmbPrj Integer where
   value i = (! i) <$!> gets integerE
 
 instance EmbPrj Word64 where
-  icod_ i = icodeN' (undefined :: Int32 -> Int32 -> Int32) (int32 q) (int32 r)
+  icod_ i = icodeN' (undefined :: Word32 -> Word32 -> Word32) (word32 q) (word32 r)
     where (q, r) = quotRem i (2 ^ 32)
-          int32 :: Word64 -> Int32
-          int32 = fromIntegral
+          word32 :: Word64 -> Word32
+          word32 = fromIntegral
 
   value = vcase valu where
-    valu [a, b] = return $! n * mod (fromIntegral a) n + mod (fromIntegral b) n
+    valu [a, b] = return $! n * fromIntegral a + fromIntegral b
     valu _      = malformed
     n = 2 ^ 32
 
-instance EmbPrj Int32 where
+instance EmbPrj Word32 where
   icod_ i = return i
   value i = return i
 
+-- Andreas, Agda Hackathon 2024-10-15
+-- Are we sure we never use an Int that does not fit into 32 bits?
 instance EmbPrj Int where
+  icod_ i = return $! fromIntegral i
+  value i = return $! fromIntegral i
+
+instance EmbPrj Int32 where
   icod_ i = return $! fromIntegral i
   value i = return $! fromIntegral i
 
@@ -160,6 +166,8 @@ instance EmbPrj Bool where
   value 1 = pure True
   value _ = malformed
 
+instance EmbPrj ConstructorOrPatternSynonym
+
 instance EmbPrj FileType where
   icod_ AgdaFileType  = pure 0
   icod_ MdFileType    = pure 1
@@ -167,6 +175,7 @@ instance EmbPrj FileType where
   icod_ TexFileType   = pure 3
   icod_ OrgFileType   = pure 4
   icod_ TypstFileType = pure 5
+  icod_ TreeFileType  = pure 6
 
   value = \case
     0 -> pure AgdaFileType
@@ -175,6 +184,7 @@ instance EmbPrj FileType where
     3 -> pure TexFileType
     4 -> pure OrgFileType
     5 -> pure TypstFileType
+    6 -> pure TreeFileType
     _ -> malformed
 
 instance EmbPrj Cubical where
@@ -240,7 +250,7 @@ instance (EmbPrj k, EmbPrj v, EmbPrj (BiMap.Tag v)) =>
 
 
 -- | Encode a list of key-value pairs as a flat list.
-mapPairsIcode :: (EmbPrj k, EmbPrj v) => [(k, v)] -> S Int32
+mapPairsIcode :: (EmbPrj k, EmbPrj v) => [(k, v)] -> S Word32
 mapPairsIcode xs = icodeNode =<< convert Empty xs where
   -- As we need to call `convert' in the tail position, the resulting list is
   -- written (and read) in reverse order, with the highest pair first in the
@@ -251,7 +261,7 @@ mapPairsIcode xs = icodeNode =<< convert Empty xs where
     entry <- icode entry
     convert (Cons start (Cons entry ys)) xs
 
-mapPairsValue :: (EmbPrj k, EmbPrj v) => [Int32] -> R [(k, v)]
+mapPairsValue :: (EmbPrj k, EmbPrj v) => [Word32] -> R [(k, v)]
 mapPairsValue = convert [] where
   convert ys [] = return ys
   convert ys (start:entry:xs) = do
@@ -267,6 +277,10 @@ instance (Ord a, EmbPrj a, EmbPrj b) => EmbPrj (Map a b) where
 instance (Ord a, EmbPrj a) => EmbPrj (Set a) where
   icod_ s = icode (Set.toAscList s)
   value s = Set.fromDistinctAscList <$!> value s
+
+instance (Ord a, EmbPrj a) => EmbPrj (Set1 a) where
+  icod_ s = icode (Set1.toAscList s)
+  value s = Set1.fromDistinctAscList <$!> value s
 
 instance EmbPrj IntSet where
   icod_ s = icode (IntSet.toAscList s)
@@ -702,15 +716,17 @@ instance EmbPrj FreeVariables where
     valu _   = malformed
 
 instance EmbPrj ConOrigin where
-  icod_ ConOSystem = return 0
-  icod_ ConOCon    = return 1
-  icod_ ConORec    = return 2
-  icod_ ConOSplit  = return 3
+  icod_ ConOSystem   = return 0
+  icod_ ConOCon      = return 1
+  icod_ ConORec      = return 2
+  icod_ ConOSplit    = return 3
+  icod_ ConORecWhere = return 4
 
   value 0 = return ConOSystem
   value 1 = return ConOCon
   value 2 = return ConORec
   value 3 = return ConOSplit
+  value 4 = return ConORecWhere
   value _ = malformed
 
 instance EmbPrj ProjOrigin where

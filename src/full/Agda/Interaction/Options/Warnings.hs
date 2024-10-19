@@ -151,7 +151,7 @@ errorWarnings = Set.fromList
   [ CoverageIssue_
   , InvalidCharacterLiteral_
   , MissingDefinitions_
-  , MissingDeclarations_
+  , MissingDataDeclaration_
   , NotAllowedInMutual_
   , NotStrictlyPositive_
   , ConstructorDoesNotFitInData_
@@ -182,6 +182,12 @@ errorWarnings = Set.fromList
   , RewriteMaybeNonConfluent_
   , RewriteAmbiguousRules_
   , RewriteMissingRule_
+
+  -- Recoverable scope-checking errors
+  , HiddenNotInArgumentPosition_
+  , InstanceNotInArgumentPosition_
+  , MacroInLetBindings_
+  , AbstractInLetBindings_
   ]
 
 allWarnings :: Set WarningName
@@ -229,6 +235,7 @@ data WarningName
   | EmptyPrivate_
   | EmptyRewritePragma_
   | EmptyWhere_
+  | EmptyPolarityPragma_
   | HiddenGeneralize_
   | InvalidCatchallPragma_
   | InvalidConstructorBlock_
@@ -237,7 +244,7 @@ data WarningName
   | InvalidNoUniverseCheckPragma_
   | DuplicateRecordDirective_
   | InvalidTerminationCheckPragma_
-  | MissingDeclarations_
+  | MissingDataDeclaration_
   | MissingDefinitions_
   | NotAllowedInMutual_
   | OpenPublicAbstract_
@@ -341,6 +348,7 @@ data WarningName
   | UselessPublic_
   | UserWarning_
   | InvalidDisplayForm_
+  | UnusedVariablesInDisplayForm_
   | WithClauseProjectionFixityMismatch_
   | WithoutKFlagPrimEraseEquality_
   | ConflictingPragmaOptions_
@@ -357,6 +365,11 @@ data WarningName
   | UnfoldingWrongName_
   | UnfoldTransparentName_
   | UselessOpaque_
+  -- Recoverable scope checking errors
+  | HiddenNotInArgumentPosition_
+  | InstanceNotInArgumentPosition_
+  | MacroInLetBindings_
+  | AbstractInLetBindings_
   -- Cubical
   | FaceConstraintCannotBeHidden_
   | FaceConstraintCannotBeNamed_
@@ -453,6 +466,7 @@ warningNameDescription = \case
   EmptyPrivate_                    -> "Empty `private' blocks."
   EmptyRewritePragma_              -> "Empty `REWRITE' pragmas."
   EmptyWhere_                      -> "Empty `where' blocks."
+  EmptyPolarityPragma_             -> "`POLARITY' pragmas giving no polarities."
   HiddenGeneralize_                -> "Hidden identifiers in variable blocks."
   InvalidCatchallPragma_           -> "`CATCHALL' pragmas before a non-function clause."
   InvalidConstructorBlock_         -> "`constructor' blocks outside of `interleaved mutual' blocks."
@@ -461,7 +475,7 @@ warningNameDescription = \case
   InvalidNoUniverseCheckPragma_    -> "Universe checking pragmas before non-`data' or `record' declaration."
   DuplicateRecordDirective_        -> "Conflicting directives in a record declaration."
   InvalidTerminationCheckPragma_   -> "Termination checking pragmas before non-function or `mutual' blocks."
-  MissingDeclarations_             -> "Definitions not associated to a declaration."
+  MissingDataDeclaration_          -> "Constructor definitions not associated to a data declaration."
   MissingDefinitions_              -> "Declarations not associated to a definition."
   NotAllowedInMutual_              -> "Declarations not allowed in a mutual block."
   OpenPublicAbstract_              -> "'open public' directives in 'abstract' blocks."
@@ -565,6 +579,7 @@ warningNameDescription = \case
   UnsolvedMetaVariables_           -> "Unsolved meta variables."
   UserWarning_                     -> "User-defined warnings via one of the 'WARNING_ON_*' pragmas."
   InvalidDisplayForm_              -> "Invalid display forms."
+  UnusedVariablesInDisplayForm_    -> "Bound but unused variables in display forms."
   TooManyArgumentsToSort_          -> "Extra arguments given to a sort."
   WithClauseProjectionFixityMismatch_ -> "With clauses using projections in different fixities than their parent clauses."
   WithoutKFlagPrimEraseEquality_   -> "Uses of `primEraseEquality' with the without-K flags."
@@ -581,6 +596,13 @@ warningNameDescription = \case
   UnfoldingWrongName_              -> "Names in `unfolding` clause that are not unambiguous functions."
   UnfoldTransparentName_           -> "Non-`opaque` names mentioned in an `unfolding` clause."
   UselessOpaque_                   -> "`opaque` blocks that have no effect."
+
+  -- Recoverable scope-checking errors
+  HiddenNotInArgumentPosition_     -> "Hidden argument with no matching function."
+  InstanceNotInArgumentPosition_   -> "Instance argument with no matching function."
+  MacroInLetBindings_              -> "Macros can not be let-bound."
+  AbstractInLetBindings_           -> "Let bindings can not contain abstract declarations."
+
   -- Cubical
   FaceConstraintCannotBeHidden_    -> "Face constraint patterns that are given as implicit arguments."
   FaceConstraintCannotBeNamed_     -> "Face constraint patterns that are given as named arguments."

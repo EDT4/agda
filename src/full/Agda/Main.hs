@@ -13,6 +13,8 @@ import Control.Monad.IO.Class ( MonadIO(..) )
 
 import qualified Data.List as List
 import Data.Maybe
+import qualified Data.Set as Set
+import qualified Data.Text as T
 
 import System.Environment
 import System.Exit
@@ -179,7 +181,7 @@ getInteractor configuredBackends maybeInputFile opts =
     pluralize w []  = concat ["(no ", w, ")"]
     pluralize w [x] = concat [w, " ", x]
     pluralize w xs  = concat [w, "s (", List.intercalate ", " xs, ")"]
-    enabledBackendNames  = pluralize "backend" [ backendName b | Backend b <- enabledBackends ]
+    enabledBackendNames  = pluralize "backend" [ T.unpack $ backendName b | Backend b <- enabledBackends ]
     enabledFrontendNames = pluralize "frontend" (frontendFlagName <$> enabledFrontends)
     frontendFlagName = ("--" ++) . \case
       FrontEndEmacs -> "interaction"
@@ -242,10 +244,10 @@ runAgdaWithOptions interactor progName opts = do
           reportSDoc "main" 50 $ pretty i
 
           -- Print accumulated warnings
-          unlessNullM (tcWarnings . classifyWarnings <$> getAllWarnings AllWarnings) $ \ ws -> do
+          unlessNullM (tcWarnings . classifyWarnings . Set.toAscList <$> getAllWarnings AllWarnings) $ \ ws -> do
             let banner = text $ "\n" ++ delimiter "All done; warnings encountered"
             alwaysReportSDoc "warning" 1 $
-              vcat $ punctuate "\n" $ banner : (prettyTCM <$> ws)
+              vsep $ (banner :) $ map prettyTCM $ Set.toAscList ws
 
           return result
 
@@ -260,7 +262,7 @@ printUsage backends hp = do
 
 backendUsage :: Backend -> String
 backendUsage (Backend b) =
-  usageInfo ("\n" ++ backendName b ++ " backend options") $
+  usageInfo ("\n" ++ T.unpack (backendName b) ++ " backend options") $
     map void (commandLineFlags b)
 
 -- | Print version information.
@@ -271,7 +273,7 @@ printVersion backends PrintAgdaVersion = do
   unless (null flags) $
     mapM_ putStrLn $ ("Built with flags (cabal -f)" :) $ map bullet flags
   mapM_ putStrLn
-    [ bullet $ name ++ " backend version " ++ ver
+    [ bullet $ T.unpack $ T.unwords [ name, "backend version", ver ]
     | Backend Backend'{ backendName = name, backendVersion = Just ver } <- backends ]
   where
   bullet = (" - " ++)

@@ -2,7 +2,6 @@
 
 module Agda.Compiler.MAlonzo.Pragmas where
 
-import Control.Monad
 import Control.Monad.Trans.Maybe
 
 import Data.Maybe
@@ -18,6 +17,7 @@ import Agda.TypeChecking.Warnings
 import Agda.TypeChecking.Primitive
 
 import Agda.Compiler.MAlonzo.Misc
+import Agda.Compiler.Treeless.Erase (isErasable)
 
 import Agda.Syntax.Common.Pretty hiding (char)
 import Agda.Utils.Functor
@@ -134,7 +134,7 @@ sanityCheckPragma x pragma = do
 
     HsDefn{} -> case theDef def of
       Axiom{}        -> ok
-      Function{}     -> notBuiltinFlat
+      Function{}     -> functionCheck
       AbstractDefn{} -> __IMPOSSIBLE__
       Datatype{}     -> recOrDataErr "data"
       Record{}       -> recOrDataErr "record"
@@ -155,7 +155,7 @@ sanityCheckPragma x pragma = do
       _ -> notPostulate
 
     HsExport{} -> case theDef def of
-      Function{} -> notBuiltinFlat
+      Function{} -> functionCheck
       _ -> bad "Only functions can be exported to Haskell using {-# COMPILE GHC <Name> as <HsName> #-}"
 
   where
@@ -176,7 +176,12 @@ sanityCheckPragma x pragma = do
       if Just x == mflat
         then bad "COMPILE GHC pragmas are not allowed for the FLAT builtin."
         else ok
-
+    notErasable = isErasable x >>= \case
+      True -> Nothing <$ do warning $ PragmaCompileErased ghcBackendName x
+      False -> ok
+    functionCheck = runMaybeT do
+      _ <- MaybeT notErasable
+      MaybeT notBuiltinFlat
 
 -- TODO: cache this to avoid parsing the pragma for every constructor
 --       occurrence!

@@ -52,11 +52,12 @@ import qualified Agda.TypeChecking.Monad  as TCM
 import qualified Agda.TypeChecking.Monad.Base.Warning as W
 import qualified Agda.TypeChecking.Pretty as TCM
 import Agda.TypeChecking.Positivity.Occurrence
-import Agda.TypeChecking.Warnings ( raiseWarningsOnUsage, runPM )
+import Agda.TypeChecking.Warnings ( raiseWarningsOnUsage )
 
 import qualified Agda.Syntax.Abstract as A
 import Agda.Syntax.Concrete.Definitions as W ( DeclarationWarning(..), DeclarationWarning'(..) )
 import Agda.Syntax.Common (Induction(..), pattern Ranged)
+import qualified Agda.Syntax.Common.Aspect as Aspect
 import qualified Agda.Syntax.Concrete.Name as C
 import qualified Agda.Syntax.Internal as I
 import qualified Agda.Syntax.Literal as L
@@ -72,6 +73,8 @@ import Agda.Syntax.Abstract.Views ( KName, declaredNames )
 
 import Agda.Utils.FileName
 import Agda.Utils.List            ( caseList, last1 )
+import Agda.Utils.List1           ( List1 )
+import qualified Agda.Utils.List1 as List1
 import Agda.Utils.List2           ( List2 )
 import qualified Agda.Utils.List2 as List2
 import Agda.Utils.Maybe
@@ -420,8 +423,8 @@ warningHighlighting' b w = case tcWarning w of
   CoverageIssue{}            -> coverageErrorHighlighting $ getRange w
   CoverageNoExactSplit{}     -> catchallHighlighting $ getRange w
   InlineNoExactSplit{}       -> catchallHighlighting $ getRange w
-  UnsolvedConstraints cs     -> if b then constraintsHighlighting [] cs else mempty
-  UnsolvedMetaVariables rs   -> if b then metasHighlighting rs          else mempty
+  UnsolvedConstraints cs     -> if b then constraintsHighlighting [] $ Fold.toList cs else mempty
+  UnsolvedMetaVariables rs   -> if b then metasHighlighting          $ Fold.toList rs else mempty
   AbsurdPatternRequiresAbsentRHS{} -> deadcodeHighlighting w
   DuplicateRecordDirective{}   -> deadcodeHighlighting w
   ModuleDoesntExport _ _ _ xs  -> foldMap deadcodeHighlighting xs
@@ -465,6 +468,7 @@ warningHighlighting' b w = case tcWarning w of
   InfectiveImport{}                     -> errorWarningHighlighting w
   CoInfectiveImport{}                   -> errorWarningHighlighting w
   InvalidDisplayForm{}                  -> deadcodeHighlighting w
+  UnusedVariablesInDisplayForm xs       -> foldMap deadcodeHighlighting xs
   TooManyArgumentsToSort _ args         -> errorWarningHighlighting args
   WithClauseProjectionFixityMismatch p _ _ _ -> cosmeticProblemHighlighting p
   WithoutKFlagPrimEraseEquality -> mempty
@@ -514,6 +518,11 @@ warningHighlighting' b w = case tcWarning w of
   FaceConstraintCannotBeHidden{}  -> deadcodeHighlighting w
   FaceConstraintCannotBeNamed{}   -> deadcodeHighlighting w
 
+  HiddenNotInArgumentPosition{}   -> errorWarningHighlighting w
+  InstanceNotInArgumentPosition{} -> errorWarningHighlighting w
+  MacroInLetBindings{}            -> errorWarningHighlighting w
+  AbstractInLetBindings{}         -> errorWarningHighlighting w
+
   NicifierIssue (DeclarationWarning _ w) -> case w of
     -- we intentionally override the binding of `w` here so that our pattern of
     -- using `getRange w` still yields the most precise range information we
@@ -529,6 +538,7 @@ warningHighlighting' b w = case tcWarning w of
     EmptyPrivate{}                   -> deadcodeHighlighting w
     EmptyGeneralize{}                -> deadcodeHighlighting w
     EmptyField{}                     -> deadcodeHighlighting w
+    EmptyPolarityPragma{}            -> deadcodeHighlighting w
     HiddenGeneralize{}               -> mempty
       -- Andreas, 2022-03-25, issue #5850
       -- We would like @deadcodeHighlighting w@ for the braces in
@@ -558,7 +568,7 @@ warningHighlighting' b w = case tcWarning w of
     W.ShadowingInTelescope nrs       -> foldMap
                                           (shadowingTelHighlighting . snd)
                                           nrs
-    MissingDeclarations{}            -> missingDefinitionHighlighting w
+    MissingDataDeclaration{}         -> missingDefinitionHighlighting w
     MissingDefinitions{}             -> missingDefinitionHighlighting w
     -- TODO: explore highlighting opportunities here!
     PolarityPragmasButNotPostulates{} -> mempty
@@ -580,8 +590,8 @@ recordFieldWarningHighlighting = \case
   W.DuplicateFields xrs      -> dead xrs
   W.TooManyFields _q _ys xrs -> dead xrs
   where
-  dead :: [(C.Name, Range)] -> HighlightingInfoBuilder
-  dead = mconcat . map deadcodeHighlighting
+  dead :: List1 (C.Name, Range) -> HighlightingInfoBuilder
+  dead = sconcat . fmap deadcodeHighlighting
   -- Andreas, 2020-03-27 #3684: This variant seems to only highlight @x@:
   -- dead = mconcat . map f
   -- f (x, r) = deadcodeHighlighting (getRange x) `mappend` deadcodeHighlighting r
@@ -589,7 +599,7 @@ recordFieldWarningHighlighting = \case
 -- | Generate syntax highlighting for termination errors.
 
 terminationErrorHighlighting ::
-  [TerminationError] -> HighlightingInfoBuilder
+  List1 TerminationError -> HighlightingInfoBuilder
 terminationErrorHighlighting termErrs = functionDefs `mappend` callSites
   where
     m            = parserBased { otherAspects = Set.singleton TerminationProblem }
@@ -651,7 +661,7 @@ instanceProblemHighlighting a = H.singleton (rToR $ P.continuousPerLine r) m
 missingDefinitionHighlighting ::
   HasRange a => a -> HighlightingInfoBuilder
 missingDefinitionHighlighting a = H.singleton (rToR $ P.continuousPerLine $ getRange a) m
-  where m = parserBased { otherAspects = Set.singleton MissingDefinition }
+  where m = parserBased { otherAspects = Set.singleton Aspect.MissingDefinition }
 
 -- | Generates and prints syntax highlighting information for unsolved
 -- meta-variables and certain unsolved constraints.
@@ -692,11 +702,11 @@ computeUnsolvedMetaWarnings = do
   return $ (rs ++ rs', metasHighlighting' rs)
 
 metasHighlighting :: [Range] -> HighlightingInfoBuilder
-metasHighlighting rs = metasHighlighting' (map (rToR . P.continuousPerLine) rs)
+metasHighlighting = metasHighlighting' . fmap (rToR . P.continuousPerLine)
 
 metasHighlighting' :: [Ranges] -> HighlightingInfoBuilder
-metasHighlighting' rs = several rs
-                     $ parserBased { otherAspects = Set.singleton UnsolvedMeta }
+metasHighlighting' rs =
+  several (List1.toList rs) parserBased{ otherAspects = Set.singleton UnsolvedMeta }
 
 -- | Generates syntax highlighting information for unsolved constraints
 --   (ideally: that are not connected to a meta variable).

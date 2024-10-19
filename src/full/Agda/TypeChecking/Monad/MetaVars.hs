@@ -4,7 +4,6 @@ module Agda.TypeChecking.Monad.MetaVars where
 
 import Prelude hiding (null)
 
-import Control.Monad                ( (<=<), forM_, guard )
 import Control.Monad.Except         ( ExceptT, MonadError )
 import Control.Monad.State          ( StateT, execStateT, get, put )
 import Control.Monad.Trans          ( MonadTrans, lift )
@@ -792,7 +791,7 @@ solveAwakeConstraints' = solveSomeAwakeConstraints (const True)
 {-# SPECIALIZE freezeMetas :: LocalMetaStore -> TCM (Set MetaId) #-}
 -- | Freeze the given meta-variables (but only if they are open) and
 -- return those that were not already frozen.
-freezeMetas :: forall m. MonadTCState m => LocalMetaStore -> m (Set MetaId)
+freezeMetas :: forall m. (MonadTCState m, ReadTCState m) => LocalMetaStore -> m (Set MetaId)
 freezeMetas ms =
   execWriterT $
   modifyTCLensM stOpenMetaStore $
