@@ -498,7 +498,7 @@ instance DeclaredNames KName where
   declaredNames = singleton
 
 instance DeclaredNames RecordDirectives where
-  declaredNames (RecordDirectives i _ _ c) = kc where
+  declaredNames (RecordDirectives i _ _ c _ _) = kc where
     kc = case c of
       NamedRecCon c -> singleton $ WithKind k c
       FreshRecCon{} -> mempty

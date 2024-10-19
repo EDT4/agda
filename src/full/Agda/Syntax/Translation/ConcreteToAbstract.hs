@@ -1943,7 +1943,7 @@ instance ToAbstract NiceDeclaration where
       reportSLn "scope.rec.def" 40 ("checking " ++ show o ++ " RecDef for " ++ prettyShow x)
       -- #3008: Termination pragmas are ignored in records
       checkNoTerminationPragma InRecordDef fields
-      RecordDirectives ind eta pat cm <- gatherRecordDirectives directives
+      RecordDirectives ind eta pat cm mp ms <- gatherRecordDirectives directives
       -- Andreas, 2020-04-19, issue #4560
       -- 'pattern' declaration is incompatible with 'coinductive' or 'eta-equality'.
       pat <- case pat of
@@ -2019,7 +2019,7 @@ instance ToAbstract NiceDeclaration where
         printScope "rec" 25 "record complete"
         f <- getConcreteFixity x
         let params = DataDefParams gvars pars
-        let dir' = RecordDirectives ind eta pat cm'
+        let dir' = RecordDirectives ind eta pat cm' mp ms
         return [ A.RecDef (mkDefInfoInstance x f PublicAccess a inst NotMacroDef r) x' uc dir' params contel afields ]
 
     NiceModule r p a e x@(C.QName name) tel open dir ds -> notAffectedByOpaque $ do
@@ -2435,6 +2435,8 @@ gatherRecordDirective d = do
     Eta re               -> assertNothing eta $ put dir{ recHasEta      = Just re }
     PatternOrCopattern r -> assertNothing pat $ put dir{ recPattern     = Just r  }
     C.Constructor x inst -> assertNothing con $ put dir{ recConstructor = Just (x, inst) }
+    ModParams mp         -> assertNothing ind $ put dir{ recModParams   = Just mp }
+    ModSelf ms           -> assertNothing ind $ put dir{ recModSelf     = Just ms }
   where
     assertNothing :: Maybe a -> StateT C.RecordDirectives ScopeM () -> StateT C.RecordDirectives ScopeM ()
     assertNothing Nothing cont = cont

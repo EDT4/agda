@@ -155,6 +155,8 @@ import Agda.Utils.Impossible
     'with'                    { TokKeyword KwWith $$ }
     'opaque'                  { TokKeyword KwOpaque $$ }
     'unfolding'               { TokKeyword KwUnfolding $$ }
+    'module-parameter-hiding' { TokKeyword KwModParamHiding $$ }
+    'module-self-hiding'      { TokKeyword KwModSelfHiding $$ }
 
     'BUILTIN'                 { TokKeyword KwBUILTIN $$ }
     'CATCHALL'                { TokKeyword KwCATCHALL $$ }
@@ -266,6 +268,8 @@ Token
     | 'macro'                   { TokKeyword KwMacro $1 }
     | 'module'                  { TokKeyword KwModule $1 }
     | 'interleaved'             { TokKeyword KwInterleaved $1 }
+    | 'module-parameter-hiding' { TokKeyword KwModParamHiding $1 }
+    | 'module-self-hiding'      { TokKeyword KwModSelfHiding $1 }
     | 'mutual'                  { TokKeyword KwMutual $1 }
     | 'no-eta-equality'         { TokKeyword KwNoEta $1 }
     | 'opaque'                  { TokKeyword KwOpaque $1 }
@@ -1852,6 +1856,8 @@ RecordDirective
     | RecordInduction       { Induction $1 }
     | RecordEta             { Eta $1 }
     | RecordPatternMatching { PatternOrCopattern $1 }
+    | RecordModParams       { ModParams $1 }
+    | RecordModSelf         { ModSelf $1 }
 
 RecordEta :: { Ranged HasEta0 }
 RecordEta
@@ -1874,6 +1880,14 @@ RecordInduction :: { Ranged Induction }
 RecordInduction
     : 'inductive'   { Ranged (getRange $1) Inductive   }
     | 'coinductive' { Ranged (getRange $1) CoInductive }
+
+RecordModParams :: { Ranged ModParams }
+RecordModParams
+    : 'module-parameter-hiding' id { Ranged (getRange $1) (AnyModParams(snd $2))  }
+
+RecordModSelf :: { Ranged ModSelf }
+RecordModSelf
+    : 'module-self-hiding' id { Ranged (getRange $1) (AnyModSelf(snd $2))  }
 
 Opaque :: { Declaration }
   : 'opaque' Declarations0     { Opaque (kwRange $1) $2 }

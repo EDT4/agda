@@ -170,23 +170,62 @@ data RecordDirectives' a = RecordDirectives
   , recHasEta      :: Maybe (Ranged HasEta0)
   , recPattern     :: Maybe Range
   , recConstructor :: a
+  , recModParams   :: Maybe(Ranged ModParams)
+  , recModSelf     :: Maybe(Ranged ModSelf)
   } deriving (Functor, Show, Eq, Foldable, Traversable)
 
 instance Null a => Null (RecordDirectives' a) where
   empty = emptyRecordDirectives
-  null (RecordDirectives a b c d) = and [null a, null b, null c, null d]
+  null (RecordDirectives a b c d e f) = and [null a, null b, null c, null d , null e , null f]
 
 emptyRecordDirectives :: Null a => RecordDirectives' a
-emptyRecordDirectives = RecordDirectives empty empty empty empty
+emptyRecordDirectives = RecordDirectives empty empty empty empty empty empty
 
 instance HasRange a => HasRange (RecordDirectives' a) where
-  getRange (RecordDirectives a b c d) = getRange (a,b,c,d)
+  getRange (RecordDirectives a b c d e f) = getRange (a,b,c,d,e,f)
 
 instance KillRange a => KillRange (RecordDirectives' a) where
-  killRange (RecordDirectives a b c d) = killRangeN RecordDirectives a b c d
+  killRange (RecordDirectives a b c d e f) = killRangeN RecordDirectives a b c d e f
 
 instance NFData a => NFData (RecordDirectives' a) where
-  rnf (RecordDirectives a b c d) = c `seq` rnf (a, b, d)
+  rnf (RecordDirectives a b c d e f) = c `seq` rnf (a, b, d, e, f)
+
+---------------------------------------------------------------------------
+-- * Module parameter settings
+---------------------------------------------------------------------------
+
+data ModParams
+  = AnyModParams String
+  deriving (Show, Eq, Ord)
+
+instance Pretty ModParams where
+  pretty (AnyModParams s) = "module-parameter-hiding" <> pretty s
+
+instance NFData ModParams where
+  rnf _ = ()
+
+applyModParams :: LensHiding a => ModParams -> a -> a
+applyModParams (AnyModParams "keep") = id
+applyModParams (AnyModParams _)      = hideOrKeepInstance
+
+---------------------------------------------------------------------------
+-- * Module parameter settings
+---------------------------------------------------------------------------
+
+data ModSelf
+  = AnyModSelf String
+  deriving (Show, Eq, Ord)
+
+instance Pretty ModSelf where
+  pretty (AnyModSelf s) = "module-self-hiding" <> pretty s
+
+instance NFData ModSelf where
+  rnf _ = ()
+
+applyModSelf :: LensHiding a => ModSelf -> a -> a
+applyModSelf (AnyModSelf "instance-hiding") = setHiding (Instance NoOverlap)
+applyModSelf (AnyModSelf "implicit-hiding") = setHiding Hidden
+applyModSelf (AnyModSelf _)                 = setHiding NotHidden
 
 ---------------------------------------------------------------------------
 -- * Eta-equality
