@@ -498,10 +498,12 @@ findInstance' m cands = do
 
 insidePi :: Type -> (Type -> TCM a) -> TCM a
 insidePi t ret = reduce (unEl t) >>= \case
+    Pi a b | getHiding a == NotHidden
+               -> ret t
     Pi a b     -> addContext (absName b, a) $ insidePi (absBody b) ret
     Def{}      -> ret t
     Var{}      -> ret t
-    Sort{}     -> __IMPOSSIBLE__
+    Sort{}     -> ret t
     Con{}      -> __IMPOSSIBLE__
     Lam{}      -> __IMPOSSIBLE__
     Lit{}      -> __IMPOSSIBLE__
@@ -969,9 +971,19 @@ getOutputTypeName t = ignoreAbstractMode $ do
     case v of
       -- Possible base types:
       Def n _  -> return (tel, v, OutputTypeName n)
-      Sort{}   -> return (tel, v, NoOutputTypeName)
+      Sort(Univ u _) -> do
+        sk <- sortKit
+        return (tel, v, OutputTypeName (nameOfUniv sk USmall u))
+      Sort(Inf u _) -> do
+        sk <- sortKit
+        return (tel, v, OutputTypeName (nameOfUniv sk ULarge u))
+      Sort _   -> return (tel, v, NoOutputTypeName)
       Var n _  -> return (tel, v, OutputTypeVar)
-      Pi{}     -> return (tel, v, OutputTypeVisiblePi)
+      Pi{}     -> do
+        -- TODO: After this change, OutputTypeVisiblePi is not used anymore. Remove?
+        -- TODO: Just a temporary hack. primLevelZero is just a randomly chosen name that was available and should not clash with other stuff. How do we create an unique name (if this hack (binding the function type to a name) is the way to go)?
+        name <- getPrimName <$> primLevelZero
+        return (tel, v, OutputTypeName name)
       -- Not base types:
       Con{}    -> __IMPOSSIBLE__
       Lam{}    -> __IMPOSSIBLE__
