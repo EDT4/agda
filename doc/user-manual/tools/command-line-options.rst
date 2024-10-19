@@ -17,8 +17,15 @@ General options
 
 .. option:: --help[={TOPIC}], -?[{TOPIC}]
 
-     Show basically this help, or more help about ``TOPIC``. Current
-     topics available: ``warning``.
+     Show basically this help, or more help about ``TOPIC``.
+     Available topics:
+
+     - ``error``:
+       List the names of Agda's errors.
+
+     - ``warning``:
+       List warning groups and individual warnings and their default status.
+       Instruct how to toggle benign warnings.
 
 .. option:: --interaction
 
@@ -1144,7 +1151,7 @@ Other features
      actually saved, and this option is more like an anticipation of possible
      future optimizations.
 
-     Default: :option:`--save-metas`.
+     Default: :option:`--no-save-metas`.
 
 Erasure
 ~~~~~~~
@@ -1317,6 +1324,10 @@ The list containing any warning ``NAME`` can be produced by ``agda --help=warnin
 .. option:: EmptyMutual
 
      Empty ``mutual`` blocks.
+
+.. option:: EmptyPolarityPragma
+
+     :ref:`POLARITY pragmas <polarity-pragma>` not giving any polarities.
 
 .. option:: EmptyPostulate
 
@@ -1629,6 +1640,10 @@ The list containing any warning ``NAME`` can be produced by ``agda --help=warnin
 
      Failures to compute full equivalence when splitting on indexed family.
 
+.. option:: UnusedVariablesInDisplayForm
+
+     :ref:`DISPLAY <display-pragma>` forms that bind variables they do not use.
+
 .. option:: UselessAbstract
 
      ``abstract`` blocks where they have no effect.
@@ -1720,9 +1735,9 @@ Such *error warnings* are always on, they cannot be toggled by :option:`-W`.
 
      Importing a file using e.g. :option:`--cubical` into one which does not.
 
-.. option:: MissingDeclarations
+.. option:: MissingDataDeclaration
 
-     Definitions not associated to a declaration.
+     Constructor definitions not associated to a data declaration.
 
 .. option:: MissingDefinitions
 
@@ -1819,6 +1834,24 @@ Such *error warnings* are always on, they cannot be toggled by :option:`-W`.
 .. option:: UnsolvedMetaVariables
 
      Unsolved meta variables.
+
+.. option:: HiddenNotInArgumentPosition
+
+     Hidden arguments ``{ x }`` can only appear as arguments to
+     functions, not as expressions by themselves.
+
+.. option:: InstanceNotInArgumentPosition
+
+     Instance arguments ``⦃ x ⦄`` can only appear as arguments to
+     functions, not as expressions by themselves.
+
+.. option:: MacroInLetBindings
+
+     Macros can not be let-bound.
+
+.. option:: AbstractInLetBindings
+
+     Let bindings can not be made abstract.
 
 
 Command-line examples

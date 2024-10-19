@@ -19,7 +19,7 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.IntSet (IntSet)
 import Data.IntMap (IntMap)
-import Data.Word (Word64)
+import Data.Word (Word64, Word32)
 import Data.Text (Text)
 import Data.Int (Int32)
 import Data.Map (Map)
@@ -84,6 +84,7 @@ instance Pretty Bool    where pretty = text . show
 instance Pretty Int     where pretty = text . show
 instance Pretty Int32   where pretty = text . show
 instance Pretty Integer where pretty = text . show
+instance Pretty Word32  where pretty = text . show
 instance Pretty Word64  where pretty = text . show
 instance Pretty Double  where pretty = text . toStringWithoutDotZero
 instance Pretty Text    where pretty = text . T.unpack
@@ -133,9 +134,9 @@ instance Pretty RangeFile where
   pretty = pretty . rangeFilePath
 
 instance Pretty a => Pretty (Position' (Strict.Maybe a)) where
-  pretty (Pn Strict.Nothing  _ l c) = pretty l <> "," <> pretty c
+  pretty (Pn Strict.Nothing  _ l c) = pretty l <> dot <> pretty c
   pretty (Pn (Strict.Just f) _ l c) =
-    pretty f <> ":" <> pretty l <> "," <> pretty c
+    pretty f <> colon <> pretty l <> dot <> pretty c
 
 instance Pretty PositionWithoutFile where
   pretty p = pretty (p { srcFile = Strict.Nothing } :: Position)
@@ -149,11 +150,11 @@ instance Pretty IntervalWithoutFile where
       ec = posCol e
 
       start :: Doc
-      start = pretty sl <> comma <> pretty sc
+      start = pretty sl <> dot <> pretty sc
 
       end :: Doc
         | sl == el  = pretty ec
-        | otherwise = pretty el <> comma <> pretty ec
+        | otherwise = pretty el <> dot <> pretty ec
 
 instance Pretty a => Pretty (Interval' (Strict.Maybe a)) where
   pretty i@(Interval s _) = file <> pretty (setIntervalFile () i)
@@ -264,6 +265,9 @@ pshow = text . show
 singPlural :: Sized a => a -> c -> c -> c
 singPlural xs singular plural = if natSize xs == 1 then singular else plural
 
+pluralS :: Sized a => a -> Doc -> Doc
+pluralS xs d = singPlural xs d (d <> "s")
+
 -- | Used for with-like 'telescopes'
 
 prefixedThings :: Doc -> [Doc] -> Doc
@@ -312,10 +316,11 @@ parens p       = lparen <> p <> rparen
 brackets p     = lbrack <> p <> rbrack
 braces p       = lbrace <> p <> rbrace
 
-semi, comma, colon, space, equals, lparen, rparen, lbrack, rbrack, lbrace, rbrace :: Doc
+semi, comma, colon, dot, space, equals, lparen, rparen, lbrack, rbrack, lbrace, rbrace :: Doc
 semi   = hlSymbol $ char ';'
 comma  = hlSymbol $ char ','
 colon  = hlSymbol $ char ':'
+dot    = hlSymbol $ char '.'
 space  = hlSymbol $ char ' '
 equals = hlSymbol $ char '='
 lparen = hlSymbol $ char '('

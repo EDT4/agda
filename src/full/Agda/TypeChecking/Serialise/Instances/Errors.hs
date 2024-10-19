@@ -5,6 +5,7 @@ module Agda.TypeChecking.Serialise.Instances.Errors where
 import Control.Monad
 
 import Agda.TypeChecking.Serialise.Base
+import Agda.TypeChecking.Serialise.Instances.Common   ( SerialisedRange(..) )
 import Agda.TypeChecking.Serialise.Instances.Internal () --instance only
 import Agda.TypeChecking.Serialise.Instances.Abstract () --instance only
 
@@ -32,8 +33,8 @@ instance EmbPrj IsAmbiguous where
     _   -> malformed
 
 instance EmbPrj TCWarning where
-  icod_ (TCWarning fp a b c d) = icodeN' TCWarning fp a b c d
-  value = valueN TCWarning
+  icod_ (TCWarning fp r a b c d) = icodeN' (\ fp -> TCWarning fp . underlyingRange) fp (SerialisedRange r) a b c d
+  value = valueN (\ fp -> TCWarning fp . underlyingRange)
 
 -- We don't need to serialise warnings that turn into errors
 instance EmbPrj Warning where
@@ -60,7 +61,7 @@ instance EmbPrj Warning where
     NicifierIssue a                       -> icodeN 7 NicifierIssue a
     InversionDepthReached a               -> icodeN 8 InversionDepthReached a
     UserWarning a                         -> icodeN 9 UserWarning a
-    AbsurdPatternRequiresAbsentRHS a      -> icodeN 10 AbsurdPatternRequiresAbsentRHS a
+    AbsurdPatternRequiresAbsentRHS        -> icodeN 10 AbsurdPatternRequiresAbsentRHS
     ModuleDoesntExport a b c d            -> icodeN 11 ModuleDoesntExport a b c d
     LibraryWarning a                      -> icodeN 12 LibraryWarning a
     CoverageNoExactSplit a b              -> icodeN 13 CoverageNoExactSplit a b
@@ -77,7 +78,7 @@ instance EmbPrj Warning where
     RewriteMaybeNonConfluent a b c        -> icodeN 24 RewriteMaybeNonConfluent a b c
     PragmaCompileErased a b               -> icodeN 25 PragmaCompileErased a b
     FixityInRenamingModule a              -> icodeN 26 FixityInRenamingModule a
-    NotInScopeW ns                        -> icodeN 27 NotInScopeW ns
+    NotInScopeW a                         -> icodeN 27 NotInScopeW a
     ClashesViaRenaming a b                -> icodeN 28 ClashesViaRenaming a b
     RecordFieldWarning a                  -> icodeN 29 RecordFieldWarning a
     UselessPatternDeclarationForRecord a  -> icodeN 30 UselessPatternDeclarationForRecord a
@@ -130,6 +131,11 @@ instance EmbPrj Warning where
     -- TODO: linearity
     -- FixingQuantity a b c                        -> icodeN 68 FixingQuantity a b c
     FixingRelevance a b c                       -> icodeN 69 FixingRelevance a b c
+    UnusedVariablesInDisplayForm a              -> icodeN 70 UnusedVariablesInDisplayForm a
+    HiddenNotInArgumentPosition a               -> __IMPOSSIBLE__
+    InstanceNotInArgumentPosition a             -> __IMPOSSIBLE__
+    MacroInLetBindings                          -> __IMPOSSIBLE__
+    AbstractInLetBindings                       -> __IMPOSSIBLE__
 
   value = vcase $ \ case
     [0, a, b]            -> valuN UnreachableClauses a b
@@ -142,7 +148,7 @@ instance EmbPrj Warning where
     [7, a]               -> valuN NicifierIssue a
     [8, a]               -> valuN InversionDepthReached a
     [9, a]               -> valuN UserWarning a
-    [10, a]              -> valuN AbsurdPatternRequiresAbsentRHS a
+    [10]                 -> valuN AbsurdPatternRequiresAbsentRHS
     [11, a, b, c, d]     -> valuN ModuleDoesntExport a b c d
     [12, a]              -> valuN LibraryWarning a
     [13, a, b]           -> valuN CoverageNoExactSplit a b
@@ -159,7 +165,7 @@ instance EmbPrj Warning where
     [24, a, b, c]        -> valuN RewriteMaybeNonConfluent a b c
     [25, a, b]           -> valuN PragmaCompileErased a b
     [26, a]              -> valuN FixityInRenamingModule a
-    [27, ns]             -> valuN NotInScopeW ns
+    [27, a]              -> valuN NotInScopeW a
     [28, a, b]           -> valuN ClashesViaRenaming a b
     [29, a]              -> valuN RecordFieldWarning a
     [30, a]              -> valuN UselessPatternDeclarationForRecord a
@@ -203,6 +209,7 @@ instance EmbPrj Warning where
     -- TODO: linearity
     -- [68, a, b, c]        -> valuN FixingQuantity a b c
     [69, a, b, c]        -> valuN FixingRelevance a b c
+    [70, a]              -> valuN UnusedVariablesInDisplayForm a
     _ -> malformed
 
 instance EmbPrj IllegalRewriteRuleReason where
@@ -325,7 +332,7 @@ instance EmbPrj DeclarationWarning' where
     -- 29 removed
     -- 30 removed
     InvalidConstructorBlock a         -> icodeN 31 InvalidConstructorBlock a
-    MissingDeclarations a             -> icodeN 32 MissingDeclarations a
+    MissingDataDeclaration a          -> icodeN 32 MissingDataDeclaration a
     HiddenGeneralize r                -> icodeN 33 HiddenGeneralize r
     UselessMacro r                    -> icodeN 34 UselessMacro r
     SafeFlagEta                    {} -> __IMPOSSIBLE__
@@ -336,6 +343,7 @@ instance EmbPrj DeclarationWarning' where
     SafeFlagNonTerminating         {} -> __IMPOSSIBLE__
     SafeFlagPolarity               {} -> __IMPOSSIBLE__
     SafeFlagTerminating            {} -> __IMPOSSIBLE__
+    EmptyPolarityPragma r             -> icodeN 35 EmptyPolarityPragma r
 
   value = vcase $ \case
     [0, a]   -> valuN UnknownNamesInFixityDecl a
@@ -370,9 +378,10 @@ instance EmbPrj DeclarationWarning' where
     -- 29 removed
     -- 30 removed
     [31,r]   -> valuN InvalidConstructorBlock r
-    [32,r]   -> valuN MissingDeclarations r
+    [32,r]   -> valuN MissingDataDeclaration r
     [33,r]   -> valuN HiddenGeneralize r
     [34,r]   -> valuN UselessMacro r
+    [35,r]   -> valuN EmptyPolarityPragma r
     _ -> malformed
 
 instance EmbPrj LibWarning where

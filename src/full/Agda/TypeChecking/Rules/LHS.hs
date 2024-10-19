@@ -15,9 +15,8 @@ import Data.Function (on)
 import Data.Maybe
 
 import Control.Arrow (left)
-import Control.Monad
-import Control.Monad.Except
-import Control.Monad.Reader
+import Control.Monad.Except       ( MonadError(..), ExceptT(..), runExceptT )
+import Control.Monad.Reader       ( MonadReader(..), asks, runReaderT )
 import Control.Monad.Writer       ( MonadWriter(..), runWriterT )
 import Control.Monad.Trans.Maybe
 
@@ -63,6 +62,7 @@ import Agda.TypeChecking.Patterns.Abstract
 import Agda.TypeChecking.Pretty
 import Agda.TypeChecking.Records hiding (getRecordConstructor)
 import Agda.TypeChecking.Reduce
+import Agda.TypeChecking.Sort
 import Agda.TypeChecking.Substitute
 import Agda.TypeChecking.Telescope
 import Agda.TypeChecking.Telescope.Path
@@ -81,7 +81,9 @@ import Agda.Utils.Functor
 import Agda.Utils.Lens
 import Agda.Utils.List
 import Agda.Utils.List1 (List1, pattern (:|))
+import Agda.Utils.List2 (pattern List2)
 import qualified Agda.Utils.List1 as List1
+import qualified Agda.Utils.List2 as List2
 import Agda.Utils.Maybe
 import Agda.Utils.Monad
 import Agda.Utils.Null
@@ -253,7 +255,7 @@ updateProblemEqs eqs = do
 
             -- In fs omitted explicit fields are replaced by underscores,
             -- and the fields are put in the correct order.
-            ps <- insertMissingFieldsFail d (const $ A.WildP empty) fs cxs
+            ps <- insertMissingFieldsFail A.RecStyleBrace d (const $ A.WildP empty) fs cxs
 
             -- We also need to insert missing implicit or instance fields.
             ps <- insertImplicitPatterns ExpandLast ps ctel
@@ -456,7 +458,7 @@ transferOrigins ps qs = do
         let Def d _  = unEl $ unArg $ fromMaybe __IMPOSSIBLE__ mb
             axs = map (nameConcrete . qnameName . unArg) (conFields c) `withArgsFrom` qs
             cpi = ConPatternInfo (PatternInfo PatORec asB) r ft mb l
-        ps <- insertMissingFieldsFail d (const $ A.WildP empty) fs axs
+        ps <- insertMissingFieldsFail A.RecStyleBrace d (const $ A.WildP empty) fs axs
         ConP c cpi <$> transfers ps qs
 
       ((asB , p) , ConP c (ConPatternInfo i r ft mb l) qs) -> do
@@ -1130,11 +1132,17 @@ checkLHS mf = updateModality checkLHS_ where
     --   sigma = fails because several substitutions [[1/i],[1/j]] correspond to phi
     -- @
 
-    splitPartial :: Telescope     -- The types of arguments before the one we split on
-                 -> Dom Type      -- The type of the argument we split on
-                 -> Abs Telescope -- The types of arguments after the one we split on
-                 -> [(A.Expr, A.Expr)] -- [(φ₁ = b1),..,(φn = bn)]
-                 -> ExceptT TCErr tcm (LHSState a)
+    splitPartial ::
+         Telescope
+            -- The types of arguments before the one we split on.
+      -> Dom Type
+            -- The type of the argument we split on.
+      -> Abs Telescope
+            -- The types of arguments after the one we split on.
+      -> List1 (A.Expr, A.Expr)
+            -- [(φ₁ = b1),..,(φn = bn)]
+      -> ExceptT TCErr tcm (LHSState a)
+
     splitPartial delta1 dom adelta2 ts = do
 
       unless (domIsFinite dom) $ liftTCM $ addContext delta1 $
@@ -1184,22 +1192,7 @@ checkLHS mf = updateModality checkLHS_ where
                    IOne  -> return t
                    _     -> typeError $ ExpectedIntervalLiteral rhs
          -- Example: ts = (i=0) (j=1) will result in phi = ¬ i & j
-         phi <- case ts of
-                   [] -> do
-                     a <- reduce (unEl $ unDom dom)
-                     -- builtinIsOne is defined, since this is a precondition for having Partial
-                     isone <- fromMaybe __IMPOSSIBLE__ <$>  -- newline because of CPP
-                       getBuiltinName' builtinIsOne
-                     case a of
-                       Def q [Apply phi] | q == isone -> return (unArg phi)
-                       -- 2024-07-21 Other cases are impossible, see comment
-                       -- https://github.com/agda/agda/pull/7379#issuecomment-2240017422
-                       -- Amelia writes:
-                       -- There's no way for the user to write an @finite ... → ... other than by using Partial,
-                       -- and Partial always has IsOne as its domain.
-                       _ -> __IMPOSSIBLE__
-
-                   _  -> foldl (\ x y -> primIMin <@> x <@> y) primIOne (map pure ts)
+         phi <- foldl (\ x y -> primIMin <@> x <@> y) primIOne (fmap pure ts)
          reportSDoc "tc.lhs.split.partial" 10 $ text "phi           =" <+> prettyTCM phi
          reportSDoc "tc.lhs.split.partial" 30 $ text "phi           =" <+> pretty phi
          phi <- reduce phi
@@ -1331,13 +1324,16 @@ checkLHS mf = updateModality checkLHS_ where
       let genTrx = boolToMaybe ((getCohesion info == Flat)) SplitOnFlat
 
       -- We should be at a data/record type
-      (dr, d, pars, ixs) <- addContext delta1 $ isDataOrRecordType a
+      (dr, d, s, pars, ixs) <- addContext delta1 $ isDataOrRecordType a
       let isRec = case dr of
             IsData{}   -> False
             IsRecord{} -> True
 
       checkMatchingAllowed d dr  -- No splitting on coinductive constructors.
-      addContext delta1 $ checkSortOfSplitVar dr a delta2 (Just target)
+
+      -- Issue #7503: use principal sort for checking if split is ok
+      let a' = set lensSort s a
+      addContext delta1 $ checkSortOfSplitVar dr a' delta2 (Just target)
 
       -- Jesper, 2019-09-13: if the data type we split on is a strict
       -- set, we locally enable --with-K during unification.
@@ -1373,7 +1369,7 @@ checkLHS mf = updateModality checkLHS_ where
         A.RecP _ fs -> do
           RecordDefn def <- theDef <$> getConstInfo d
           let axs = map argFromDom $ recordFieldNames def
-          ps <- insertMissingFieldsFail d (const $ A.WildP empty) fs axs
+          ps <- insertMissingFieldsFail A.RecStyleBrace d (const $ A.WildP empty) fs axs
           ps <- insertImplicitPatterns ExpandLast ps gamma
           return $ useNamesFromPattern ps gamma
         _ -> __IMPOSSIBLE__
@@ -1598,31 +1594,32 @@ hardTypeError = withCallerCallStack $ \loc -> liftTCM . typeError' loc
 type DataOrRecord = DataOrRecord' InductionAndEta
 
 -- | Check if the type is a data or record type and return its name,
---   definition, parameters, and indices. Fails softly if the type could become
+--   definition, sort, parameters, and indices. Fails softly if the type could become
 --   a data/record type by instantiating a variable/metavariable, or fail hard
 --   otherwise.
 isDataOrRecordType
   :: (MonadTCM m, PureTCM m)
   => Type
-  -> ExceptT TCErr m (DataOrRecord, QName, Args, Args)
+  -> ExceptT TCErr m (DataOrRecord, QName, Sort, Args, Args)
        -- ^ The 'Args' are parameters and indices.
 
 isDataOrRecordType a0 = ifBlocked a0 blocked $ \case
   ReallyNotBlocked -> \ a -> case unEl a of
 
     -- Subcase: split type is a Def.
-    Def d es -> liftTCM (theDef <$> getConstInfo d) >>= \case
+    Def d es -> liftTCM (getConstInfo d) >>= \def -> case theDef def of
 
-      Datatype{dataPars = np} -> do
+      Datatype{dataPars = np, dataSort = s} -> do
 
         whenM (isInterval a) $ hardTypeError =<< notData
 
         let (pars, ixs) = splitAt np $ fromMaybe __IMPOSSIBLE__ $ allApplyElims es
-        return (IsData, d, pars, ixs)
+        return (IsData, d, s, pars, ixs)
 
       Record{ recInduction, recEtaEquality' } -> do
         let pars = fromMaybe __IMPOSSIBLE__ $ allApplyElims es
-        return (IsRecord InductionAndEta {recordInduction=recInduction, recordEtaEquality=recEtaEquality' }, d, pars, [])
+        s <- shouldBeSort =<< defType def `piApplyM` pars
+        return (IsRecord InductionAndEta {recordInduction=recInduction, recordEtaEquality=recEtaEquality' }, d, s, pars, [])
 
       -- Issue #2253: the data type could be abstract.
       AbstractDefn{} -> hardTypeError $ SplitOnAbstract d
@@ -1722,14 +1719,17 @@ disambiguateProjection h ambD@(AmbQ ds) b = do
           -- If this fails, we try again with constraints, but we require
           -- the solution to be unique.
           tryDisambiguate True fs r vs comatching $ \case
-            ([]   , []      ) -> __IMPOSSIBLE__
-            (err:_, []      ) -> throwError err
-            (_    , disambs@((d,a):_)) -> typeError $ AmbiguousProjection d (map fst disambs)
+            (err:_, [] ) -> throwError err
+            ([]   , [] ) -> __IMPOSSIBLE__
+            (_    , [_]) -> __IMPOSSIBLE__
+            (_    , (d,_) : (d1,_) : disambs) ->
+              typeError $ AmbiguousProjection d $ d1 :| map fst disambs
   where
     tryDisambiguate constraintsOk fs r vs comatching failure = do
       -- Note that tryProj wraps TCM in an ExceptT, collecting errors
       -- instead of throwing them to the user immediately.
-      disambiguations <- mapM (runExceptT . tryProj constraintsOk fs r vs) ds
+      disambiguations :: List1 (Either TCErr (QName, (Arg Type, ArgInfo, Maybe TCState)))
+        <- mapM (runExceptT . tryProj constraintsOk fs r vs) ds
       case List1.partitionEithers disambiguations of
         (_ , (d, (a, ai, mst)) : disambs) | constraintsOk <= null disambs -> do
           mapM_ putTC mst -- Activate state changes
@@ -1836,8 +1836,8 @@ disambiguateConstructor ambC@(AmbQ cs) d pars = do
         -- meaning that only the parameters may differ,
         -- then throw more specific error.
         (_    , [_]) -> typeError $ CantResolveOverloadedConstructorsTargetingSameDatatype d cs
-        (_    , disambs@(((c,_,_) :| _) : _)) -> typeError $
-          AmbiguousConstructor c (map (conName . snd3) $ List1.concat disambs)
+        (_    , (d0@((c,_,_) :| _) : d1 : ds)) -> typeError $
+          AmbiguousConstructor c $ fmap (conName . snd3) $ List2.concat21 $ List2 d0 d1 ds
 
   where
     tryDisambiguate

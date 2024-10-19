@@ -4,9 +4,7 @@ module Agda.TypeChecking.Rules.Data where
 
 import Prelude hiding (null, not, (&&), (||) )
 
-import Control.Monad
-import Control.Monad.Except
-import Control.Monad.Trans
+import Control.Monad.Except ( MonadError(..), ExceptT(..), runExceptT )
 import Control.Monad.Trans.Maybe
 import Control.Exception as E
 
@@ -21,6 +19,7 @@ import Agda.Syntax.Abstract.Views (deepUnscope)
 import Agda.Syntax.Internal
 import Agda.Syntax.Internal.Pattern
 import Agda.Syntax.Common
+import qualified Agda.Syntax.Common.Pretty as P
 import Agda.Syntax.Position
 import qualified Agda.Syntax.Info as Info
 import Agda.Syntax.Scope.Monad
@@ -54,7 +53,7 @@ import Agda.Utils.List
 import Agda.Utils.Maybe
 import Agda.Utils.Monad
 import Agda.Utils.Null
-import qualified Agda.Syntax.Common.Pretty as P
+import qualified Agda.Utils.Set1 as Set1
 import Agda.Utils.Size
 
 import Agda.Utils.Impossible
@@ -156,7 +155,7 @@ checkDataDef i name uc (A.DataDefParams gpars ps) cs =
                   }
 
             escapeContext impossible npars $ do
-              addConstant' name defaultArgInfo name t $ DatatypeDefn dataDef
+              addConstant' name defaultArgInfo t $ DatatypeDefn dataDef
                 -- polarity and argOcc.s determined by the positivity checker
 
             -- Check the types of the constructors
@@ -197,7 +196,7 @@ checkDataDef i name uc (A.DataDefParams gpars ps) cs =
 
         -- Add the datatype to the signature with its constructors.
         -- It was previously added without them.
-        addConstant' name defaultArgInfo name t $ DatatypeDefn
+        addConstant' name defaultArgInfo t $ DatatypeDefn
             dataDef{ _dataCons = cons
                    , _dataTranspIx = mtranspix
                    , _dataTransp   = transpFun
@@ -332,7 +331,7 @@ checkConstructor d uc tel nofIxs s con@(A.Axiom _ i ai Nothing c e) =
         -- add parameters to constructor type and put into signature
         escapeContext impossible (size tel) $ do
           erasure <- optErasure <$> pragmaOptions
-          addConstant' c ai c (telePi tel t) $ Constructor
+          addConstant' c ai (telePi tel t) $ Constructor
               { conPars   = size tel
               , conArity  = arity
               , conSrcCon = con
@@ -375,7 +374,7 @@ checkConstructor d uc tel nofIxs s con@(A.Axiom _ i ai Nothing c e) =
 
       case e of
         A.Generalized s e -> do
-          (_, t, isPathCons) <- generalizeType' s (check 1 e)
+          (_, t, isPathCons) <- generalizeType' (Set1.toSet s) (check 1 e)
           return (t, isPathCons)
         _ -> check 0 e
 
@@ -598,7 +597,6 @@ defineCompData d con params names fsT t boundary = do
           , clauseLHSRange    = noRange
           , clauseCatchall    = False
           , clauseBody        = Just $ body
-          , clauseExact       = Just True
           , clauseRecursive   = Nothing
               -- Andreas 2020-02-06 TODO
               -- Or: Just False;  is it known to be non-recursive?
@@ -1277,7 +1275,6 @@ defineConClause trD' isHIT mtrX npars nixs xTel' telI sigma dT' cnames = do
             -- it is indirectly recursive through transp, does it count?
             , clauseUnreachable = Just False
             , clauseEllipsis    = NoEllipsis
-            , clauseExact       = Nothing
             , clauseWhereModule = Nothing
             }
       reportSDoc "tc.data.transp.con" 20 $

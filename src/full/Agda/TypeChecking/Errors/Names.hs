@@ -16,16 +16,23 @@ typeErrorString = errorNameString . typeErrorName
 typeErrorName :: TypeError -> ErrorName
 typeErrorName = \case
   -- Error groups (alphabetically) with named sub errors
+  ExecError                err -> ExecError_             $ execErrorName                  err
   GHCBackendError          err -> GHCBackendError_       $ ghcBackendErrorName            err
+  JSBackendError           err -> JSBackendError_        $ jsBackendErrorName             err
   ImpossibleConstructor _  err -> ImpossibleConstructor_ $ impossibleConstructorErrorName err
   InteractionError         err -> InteractionError_      $ interactionErrorName           err
   NicifierError            err -> NicifierError_         $ declarationExceptionName       err
   SplitError               err -> SplitError_            $ splitErrorName                 err
   UnquoteFailed            err -> UnquoteError_          $ unquoteErrorName               err
   -- Parametrized errors
+  CannotQuote             what -> CannotQuote_           $ unquotableName                 what
+  MissingTypeSignature    what -> MissingTypeSignature_  $ missingTypeSignatureInfoName   what
+  InvalidPun            kind _ -> InvalidPun_              kind
+  CannotQuoteTerm         what -> CannotQuoteTerm_         what
   NotAllowedInDotPatterns what -> NotAllowedInDotPatterns_ what
   NotAValidLetBinding     what -> NotAValidLetBinding_     what
   NotAValidLetExpression  what -> NotAValidLetExpression_  what
+  PatternSynonymArgumentShadows what _ _ -> PatternSynonymArgumentShadows_ what
   -- Wrappers
   OperatorInformation _    err -> typeErrorName err
   -- Generic errors (alphabetically)
@@ -54,6 +61,7 @@ typeErrorName = \case
   AmbiguousTopLevelModuleName                                {} -> AmbiguousTopLevelModuleName_
   AsPatternInPatternSynonym                                  {} -> AsPatternInPatternSynonym_
   AttributeKindNotEnabled                                    {} -> AttributeKindNotEnabled_
+  BackendDoesNotSupportOnlyScopeChecking                     {} -> BackendDoesNotSupportOnlyScopeChecking_
   BadArgumentsToPatternSynonym                               {} -> BadArgumentsToPatternSynonym_
   BuiltinInParameterisedModule                               {} -> BuiltinInParameterisedModule_
   BuiltinMustBeConstructor                                   {} -> BuiltinMustBeConstructor_
@@ -69,15 +77,19 @@ typeErrorName = \case
   ClashingModule                                             {} -> ClashingModule_
   ComatchingDisabledForRecord                                {} -> ComatchingDisabledForRecord_
   ConstructorDoesNotTargetGivenType                          {} -> ConstructorDoesNotTargetGivenType_
+  ConstructorNameOfNonRecord                                 {} -> ConstructorNameOfNonRecord_
   ConstructorPatternInWrongDatatype                          {} -> ConstructorPatternInWrongDatatype_
   ContradictorySizeConstraint                                {} -> ContradictorySizeConstraint_
+  CopatternHeadNotProjection                                 {} -> CopatternHeadNotProjection_
   CubicalCompilationNotSupported                             {} -> CubicalCompilationNotSupported_
   CubicalPrimitiveNotFullyApplied                            {} -> CubicalPrimitiveNotFullyApplied_
   CyclicModuleDependency                                     {} -> CyclicModuleDependency_
   DeBruijnIndexOutOfScope                                    {} -> DeBruijnIndexOutOfScope_
+  DeclarationsAfterTopLevelModule                            {} -> DeclarationsAfterTopLevelModule_
   DefinitionInDifferentModule                                {} -> DefinitionInDifferentModule_
   DefinitionIsErased                                         {} -> DefinitionIsErased_
   DefinitionIsIrrelevant                                     {} -> DefinitionIsIrrelevant_
+  DoNotationError                                            {} -> DoNotationError_
   DoesNotMentionTicks                                        {} -> DoesNotMentionTicks_
   DotPatternInPatternSynonym                                 {} -> DotPatternInPatternSynonym_
   DuplicateBuiltinBinding                                    {} -> DuplicateBuiltinBinding_
@@ -97,7 +109,10 @@ typeErrorName = \case
   GeneralizeNotSupportedHere                                 {} -> GeneralizeNotSupportedHere_
   GeneralizedVarInLetOpenedModule                            {} -> GeneralizedVarInLetOpenedModule_
   HidingMismatch                                             {} -> HidingMismatch_
+  IdiomBracketError                                          {} -> IdiomBracketError_
+  InvalidDottedExpression                                    {} -> InvalidDottedExpression_
   IllTypedPatternAfterWithAbstraction                        {} -> IllTypedPatternAfterWithAbstraction_
+  IllegalDeclarationBeforeTopLevelModule                     {} -> IllegalDeclarationBeforeTopLevelModule_
   IllegalDeclarationInDataDefinition                         {} -> IllegalDeclarationInDataDefinition_
   IllegalHidingInPostfixProjection                           {} -> IllegalHidingInPostfixProjection_
   IllegalInstanceVariableInPatternSynonym                    {} -> IllegalInstanceVariableInPatternSynonym_
@@ -119,7 +134,6 @@ typeErrorName = \case
   MetaCannotDependOn                                         {} -> MetaCannotDependOn_
   MetaErasedSolution                                         {} -> MetaErasedSolution_
   MetaIrrelevantSolution                                     {} -> MetaIrrelevantSolution_
-  MetaOccursInItself                                         {} -> MetaOccursInItself_
   MismatchedProjectionsError                                 {} -> MismatchedProjectionsError_
   ModuleArityMismatch                                        {} -> ModuleArityMismatch_
   ModuleDefinedInOtherFile                                   {} -> ModuleDefinedInOtherFile_
@@ -151,17 +165,18 @@ typeErrorName = \case
   NotInScope                                                 {} -> NotInScope_
   NotLeqSort                                                 {} -> NotLeqSort_
   NotValidBeforeField                                        {} -> NotValidBeforeField_
-  NothingAppliedToHiddenArg                                  {} -> NothingAppliedToHiddenArg_
-  NothingAppliedToInstanceArg                                {} -> NothingAppliedToInstanceArg_
+  OpenEverythingInRecordWhere                                {} -> OpenEverythingInRecordWhere_
   OverlappingProjects                                        {} -> OverlappingProjects_
   PatternInPathLambda                                        {} -> PatternInPathLambda_
   PatternInSystem                                            {} -> PatternInSystem_
-  PatternSynonymArgumentShadowsConstructorOrPatternSynonym   {} -> PatternSynonymArgumentShadowsConstructorOrPatternSynonym_
+  PrivateRecordField                                         {} -> PrivateRecordField_
   ProjectionIsIrrelevant                                     {} -> ProjectionIsIrrelevant_
+  QualifiedLocalModule                                       {} -> QualifiedLocalModule_
   QuantityMismatch                                           {} -> QuantityMismatch_
   RecursiveRecordNeedsInductivity                            {} -> RecursiveRecordNeedsInductivity_
   ReferencesFutureVariables                                  {} -> ReferencesFutureVariables_
   RelevanceMismatch                                          {} -> RelevanceMismatch_
+  RepeatedNamesInImportDirective                             {} -> RepeatedNamesInImportDirective_
   RepeatedVariablesInPattern                                 {} -> RepeatedVariablesInPattern_
   ShadowedModule                                             {} -> ShadowedModule_
   ShouldBeASort                                              {} -> ShouldBeASort_
@@ -191,6 +206,7 @@ typeErrorName = \case
   TooManyPatternsInWithClause                                {} -> TooManyPatternsInWithClause_
   TooManyPolarities                                          {} -> TooManyPolarities_
   TriedToCopyConstrainedPrim                                 {} -> TriedToCopyConstrainedPrim_
+  InvalidInstanceHeadType                                    {} -> InvalidInstanceHeadType_
   UnboundVariablesInPatternSynonym                           {} -> UnboundVariablesInPatternSynonym_
   UnequalCohesion                                            {} -> UnequalCohesion_
   UnequalFiniteness                                          {} -> UnequalFiniteness_
@@ -204,6 +220,7 @@ typeErrorName = \case
   UnexpectedParameter                                        {} -> UnexpectedParameter_
   UnexpectedTypeSignatureForParameter                        {} -> UnexpectedTypeSignatureForParameter_
   UnexpectedWithPatterns                                     {} -> UnexpectedWithPatterns_
+  UnknownBackend                                             {} -> UnknownBackend_
   UnusableAtModality                                         {} -> UnusableAtModality_
   UnusedVariableInPatternSynonym                             {} -> UnusedVariableInPatternSynonym_
   VariableIsErased                                           {} -> VariableIsErased_
@@ -228,12 +245,10 @@ declarationExceptionName = \case
   N.AmbiguousConstructor           {} -> AmbiguousConstructorN_
   AmbiguousFunClauses              {} -> AmbiguousFunClauses_
   BadMacroDef                      {} -> BadMacroDef_
-  DeclarationPanic                 {} -> DeclarationPanic_
   DisallowedInterleavedMutual      {} -> DisallowedInterleavedMutual_
   DuplicateAnonDeclaration         {} -> DuplicateAnonDeclaration_
   DuplicateDefinition              {} -> DuplicateDefinition_
   InvalidMeasureMutual             {} -> InvalidMeasureMutual_
-  InvalidName                      {} -> InvalidName_
   MissingWithClauses               {} -> MissingWithClauses_
   MultipleEllipses                 {} -> MultipleEllipses_
   OpaqueInMutual                   {} -> OpaqueInMutual_
@@ -242,11 +257,21 @@ declarationExceptionName = \case
   WrongContentBlock                {} -> WrongContentBlock_
   WrongDefinition                  {} -> WrongDefinition_
 
+execErrorName :: ExecError -> ExecError_
+execErrorName = \case
+  ExeNotTrusted    {} -> ExeNotTrusted_
+  ExeNotFound      {} -> ExeNotFound_
+  ExeNotExecutable {} -> ExeNotExecutable_
+
 ghcBackendErrorName :: GHCBackendError -> GHCBackendError_
 ghcBackendErrorName = \case
   ConstructorCountMismatch{} -> ConstructorCountMismatch_
   NotAHaskellType _ err      -> NotAHaskellType_ $ notAHaskellTypeErrorName err
   WrongTypeOfMain{}          -> WrongTypeOfMain_
+
+jsBackendErrorName :: JSBackendError -> JSBackendError_
+jsBackendErrorName = \case
+  BadCompilePragma -> BadCompilePragma_
 
 impossibleConstructorErrorName :: NegativeUnification -> NegativeUnification_
 impossibleConstructorErrorName = \case
@@ -262,6 +287,12 @@ interactionErrorName = \case
   NoActionForInteractionPoint{} -> NoActionForInteractionPoint_
   NoSuchInteractionPoint{}      -> NoSuchInteractionPoint_
   UnexpectedWhere{}             -> UnexpectedWhere_
+
+missingTypeSignatureInfoName :: MissingTypeSignatureInfo -> DataRecOrFun_
+missingTypeSignatureInfoName = \case
+  MissingDataSignature      {} -> DataName_
+  MissingRecordSignature    {} -> RecName_
+  MissingFunctionSignature  {} -> FunName_
 
 notAHaskellTypeErrorName :: WhyNotAHaskellType -> NotAHaskellType_
 notAHaskellTypeErrorName = \case
@@ -286,16 +317,26 @@ splitErrorName = \case
   NotADatatype              {} -> NotADatatype_
   UnificationStuck          {} -> UnificationStuck_
 
+unquotableName :: CannotQuote -> CannotQuote_
+unquotableName = \case
+  CannotQuoteAmbiguous         {} -> CannotQuoteAmbiguous_
+  CannotQuoteExpression        {} -> CannotQuoteExpression_
+  CannotQuoteHidden            {} -> CannotQuoteHidden_
+  CannotQuoteNothing           {} -> CannotQuoteNothing_
+  CannotQuotePattern           {} -> CannotQuotePattern_
+
 unquoteErrorName :: UnquoteError -> UnquoteError_
 unquoteErrorName = \case
-  BadVisibility               {} -> BadVisibility_
   CannotDeclareHiddenFunction {} -> CannotDeclareHiddenFunction_
   ConInsteadOfDef             {} -> ConInsteadOfDef_
   DefInsteadOfCon             {} -> DefInsteadOfCon_
+  MissingDeclaration          {} -> MissingDeclaration_
+  MissingDefinition           {} -> MissingDefinition_
+  NakedUnquote                {} -> NakedUnquote_
   NonCanonical                {} -> NonCanonical_
   BlockedOnMeta               {} -> BlockedOnMeta_
   PatLamWithoutClauses        {} -> PatLamWithoutClauses_
-  UnquotePanic                {} -> UnquotePanic_
+  StaleMeta                   {} -> StaleMeta_
 
 -- -- * Printing names of errors
 

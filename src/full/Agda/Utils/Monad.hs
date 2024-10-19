@@ -1,14 +1,13 @@
+{-# LANGUAGE CPP #-}
 
 module Agda.Utils.Monad
     ( module Agda.Utils.Monad
-    , when, unless, MonadPlus(..)
-    , (<$>), (<*>), (<$!>)
-    , (<$)
+    , module X
+    , (<$>), (<*>) , (<$)
     )
     where
 
 import Control.Applicative    ( liftA2 )
-import Control.Monad          ( MonadPlus(..), guard, unless, when, (<$!>) )
 import Control.Monad.Except   ( MonadError(catchError, throwError) )
 import Control.Monad.Identity ( runIdentity )
 import Control.Monad.State    ( MonadState(get, put) )
@@ -22,11 +21,47 @@ import Data.Maybe
 import Data.Monoid
 
 import Agda.Utils.Applicative
+import Agda.Utils.Boolean
 import Agda.Utils.Either
 import Agda.Utils.Null (empty, ifNotNullM)
 import Agda.Utils.Singleton
 
 import Agda.Utils.Impossible
+
+-- Reexport Control.Monad
+import Control.Monad as X
+  ( MonadPlus(..), (<$!>), (>=>), (<=<)
+  , filterM, foldM, forM, forM_
+  , join
+  , liftM2, liftM3, liftM4
+  , msum
+  , void
+  , zipWithM, zipWithM_
+  )
+import Control.Monad.Trans as X
+  ( MonadTrans, lift
+  )
+
+
+---------------------------------------------------------------------------
+-- Vendor some new functions from mtl-2.3.1
+
+#if MIN_VERSION_mtl(2,3,1)
+import Control.Monad.Except as X ( tryError, withError )
+#endif
+
+#if !MIN_VERSION_mtl(2,3,1)
+-- | 'MonadError' analogue to the 'Control.Exception.try' function.
+tryError :: MonadError e m => m a -> m (Either e a)
+tryError action = (Right <$> action) `catchError` (pure . Left)
+
+-- | 'MonadError' analogue to the 'withExceptT' function.
+-- Modify the value (but not the type) of an error.  The type is
+-- fixed because of the functional dependency @m -> e@.  If you need
+-- to change the type of @e@ use 'mapError' or 'modifyError'.
+withError :: MonadError e m => (e -> e) -> m a -> m a
+withError f action = tryError action >>= either (throwError . f) pure
+#endif
 
 ---------------------------------------------------------------------------
 
@@ -44,6 +79,18 @@ k ==<< (ma, mb) = ma >>= \ a -> k a =<< mb
 infixl 4 <*!>
 
 -- Conditionals and monads ------------------------------------------------
+
+{-# SPECIALIZE when :: Monad m => Bool -> m () -> m () #-}
+when :: (IsBool b, Monad m) => b -> m () -> m ()
+when b m = ifThenElse b m $ pure ()
+
+{-# SPECIALIZE unless :: Monad m => Bool -> m () -> m () #-}
+unless :: (IsBool b, Monad m) => b -> m () -> m()
+unless b m = ifThenElse b (pure ()) m
+
+{-# SPECIALIZE guard :: MonadPlus m => Bool -> m () #-}
+guard :: (IsBool b, MonadPlus m) => b -> m ()
+guard b = ifThenElse b (pure ()) mzero
 
 whenM :: Monad m => m Bool -> m () -> m ()
 whenM c m = c >>= (`when` m)

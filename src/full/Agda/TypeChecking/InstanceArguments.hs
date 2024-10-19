@@ -18,10 +18,7 @@ module Agda.TypeChecking.InstanceArguments
   , resolveInstanceHead
   ) where
 
-import Control.Monad          (forM, filterM)
 import Control.Monad.Except   (ExceptT(..), runExceptT, MonadError(..))
-import Control.Monad.Trans    (lift )
--- import Control.Monad.IO.Class (liftIO)
 
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
@@ -79,13 +76,11 @@ initialInstanceCandidates :: Bool -> Type -> TCM (Either Blocker [Candidate])
 initialInstanceCandidates blockOverlap instTy = do
   (_, _, otn) <- getOutputTypeName instTy
   case otn of
-    NoOutputTypeName -> typeError $ GenericError $
-      "Instance search can only be used to find elements in a named type"
+    NoOutputTypeName -> typeError $ InvalidInstanceHeadType instTy ImproperInstHead
+    OutputTypeVisiblePi -> typeError $ InvalidInstanceHeadType instTy ImproperInstTele
     OutputTypeNameNotYetKnown b -> do
       reportSDoc "tc.instance.cands" 30 $ "Instance type is not yet known. "
       return (Left b)
-    OutputTypeVisiblePi -> typeError $ GenericError $
-      "Instance search cannot be used to find elements in an explicit function type"
     OutputTypeVar -> do
       reportSDoc "tc.instance.cands" 30 $ "Instance type is a variable. "
       runBlocked (getContextVars Nothing)

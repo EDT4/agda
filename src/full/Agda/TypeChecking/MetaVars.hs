@@ -6,9 +6,7 @@ module Agda.TypeChecking.MetaVars where
 
 import Prelude hiding (null)
 
-import Control.Monad        ( foldM, forM, forM_, liftM2, void, guard )
 import Control.Monad.Except ( MonadError(..), ExceptT, runExceptT )
-import Control.Monad.Trans  ( lift )
 import Control.Monad.Trans.Maybe
 
 import qualified Data.IntSet as IntSet
@@ -1081,10 +1079,9 @@ assign dir x args v target = addOrUnblocker (unblockOnMeta x) $ do
                 IsLock{} -> do
                 let us = IntSet.unions $ map snd $ filter (earlierThan i . fst) idvars
                 -- us Earlier than u
-                addContext tel' $ checkEarlierThan u us
-                  `catchError` \case
-                     TypeError{} -> patternViolation (unblockOnMeta x) -- If the earlier check hard-fails we need to
-                     err         -> throwError err                     -- solve this meta in some other way.
+                unlessM (addContext tel' $ checkEarlierThan u us) $
+                  patternViolation (unblockOnMeta x)  -- If the earlier check hard-fails we need to
+                                                      -- solve this meta in some other way.
 
           let n = length args
           TelV tel' _ <- telViewUpToPath n t
@@ -1911,7 +1908,7 @@ openMetasToPostulates = do
       ]
 
     -- Add the new postulate to the signature.
-    addConstant' q defaultArgInfo q t defaultAxiom
+    addConstant' q defaultArgInfo t defaultAxiom
 
     -- Solve the meta.
     let inst = InstV $ Instantiation
