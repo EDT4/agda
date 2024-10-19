@@ -361,8 +361,9 @@ newArgsMetaCtx'' pref frozen condition (El s tm) tel perm ctx = do
       -- generalizable variable, we must set the modality at which it
       -- will be generalized.  Don't do this for other metavariables,
       -- as they should keep the defaul modality (see #5363).
-      whenM ((== YesGeneralizeVar) <$> viewTC eGeneralizeMetas) $
-        setMetaGeneralizableArgInfo m info
+      whenM ((== YesGeneralizeVar) <$> viewTC eGeneralizeMetas) do
+        allowExplGens <- optAllowExplicitGenVars <$> pragmaOptions
+        setMetaGeneralizableArgInfo m $ (if allowExplGens then id else hideOrKeepInstance) info
       setMetaNameSuggestion m (suffixNameSuggestion pref (absName codom))
       args <- newArgsMetaCtx'' pref frozen condition (codom `absApp` u) tel perm ctx
       return $ Arg info u : args

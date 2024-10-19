@@ -452,8 +452,10 @@ computeGeneralization genRecMeta nameMap allmetas = postponeInstanceConstraints 
     args <- getContextArgs
     concat <$> forM sortedMetas \ m -> do
       mv <- lookupLocalMeta m
+      allowExplGens <- optAllowExplicitGenVars <$> pragmaOptions
       let info =
-            (getArgInfo $ miGeneralizable $ mvInfo mv) { argInfoOrigin = Generalization }
+            ((if allowExplGens then id else hideOrKeepInstance) $
+            getArgInfo $ miGeneralizable $ mvInfo mv) { argInfoOrigin = Generalization }
           HasType{ jMetaType = t } = mvJudgement mv
           perm = mvPermutation mv
       t' <- piApplyM t $ permute (takeP (length args) perm) args

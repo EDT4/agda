@@ -1,3 +1,4 @@
+{-# OPTIONS --allow-explicit-generalizations -WnoHiddenGeneralize #-}
 postulate T : Set
 postulate t : T
 postulate P : T → T → T → Set
