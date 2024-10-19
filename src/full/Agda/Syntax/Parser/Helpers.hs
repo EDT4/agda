@@ -481,7 +481,7 @@ maybeNamed e =
     Equal _ e1 e2 -> do
       let succeed x = return $ named (WithOrigin UserWritten $ Ranged (getRange e1) x) e2
       case e1 of
-        Ident (QName x) -> succeed $ nameToRawName x
+        Ident x -> succeed $ qnameToRawName x
         -- We could have the following, but names of arguments cannot be _.
         -- Underscore{}    -> succeed $ "_"
         _ -> parseErrorRange e $ "Not a valid named argument: " ++ prettyShow e

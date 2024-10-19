@@ -143,6 +143,9 @@ lensNameParts f = \case
 nameToRawName :: Name -> RawName
 nameToRawName = prettyShow
 
+qnameToRawName :: QName -> RawName
+qnameToRawName = prettyShow
+
 nameParts :: Name -> NameParts
 nameParts (Name _ _ ps)    = ps
 nameParts (NoName _ _)     = singleton $ Id "_" -- To not return an empty list
