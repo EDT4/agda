@@ -395,6 +395,7 @@ computeGeneralization genRecMeta nameMap allmetas = postponeInstanceConstraints 
             -- If we solved the parent with a new meta use the parent name for that.
             [m] | MetaV{} <- instBody inst -> setMetaNameSuggestion m parentName
             -- Otherwise suffix with a number.
+            -- ms -> zipWithM_ (\ i m -> setMetaNameSuggestion m (parentName ++ "." ++ show i)) [1..] ms -- TODO: This is the original line. The line below applies hideOrKeepInstance on all inherited generalised vars as a quickfix for issue #7047 (implicit hiding is how variables are usually defined, so it minimises the probability of one stumbling upon the issue).
             ms -> zipWithM_ (\ i m -> setMetaNameSuggestion m (parentName ++ "." ++ show i) >> getMetaGeneralizableArgInfo m >>= setMetaGeneralizableArgInfo m . hideOrKeepInstance) [1..] ms
         return $ Set.fromList metas
       _ -> __IMPOSSIBLE__
