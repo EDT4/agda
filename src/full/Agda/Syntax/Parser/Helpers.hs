@@ -63,21 +63,21 @@ figureOutTopLevelModule ds =
 
     -- Case 2: The declarations in the module are not indented.
     -- This is allowed for the top level module, and thus rectified here.
-    (ds0, Module r erased m tel [] : ds2) ->
-      ds0 ++ [Module r erased m tel ds2]
+    (ds0, Module r erased m tel o i [] : ds2) ->
+      ds0 ++ [Module r erased m tel o i ds2]
 
     -- Case 3: There is a module with indented declarations,
     -- followed by non-indented declarations.  This should be a
     -- parse error and be reported later (see @toAbstract TopLevel{}@),
     -- thus, we do not do anything here.
-    (ds0, Module r _ m tel ds1 : ds2) -> ds  -- Gives parse error in scope checker.
+    (ds0, Module r _ m tel _ _ ds1 : ds2) -> ds  -- Gives parse error in scope checker.
     -- OLD code causing issue 1388:
     -- (ds0, Module r m tel ds1 : ds2) -> ds0 ++ [Module r m tel $ ds1 ++ ds2]
 
     -- Case 4: a top-level module declaration is missing.
     -- Andreas, 2017-01-01, issue #2229:
     -- Put everything (except OPTIONS pragmas) into an anonymous module.
-    _ -> ds0 ++ [Module r defaultErased (QName $ noName r) [] ds1]
+    _ -> ds0 ++ [Module r defaultErased (QName $ noName r) [] DoOpen (defaultImportDir { publicOpen = Just empty }) ds1]
       where
       (ds0, ds1) = (`span` ds) $ \case
         Pragma OptionsPragma{} -> True

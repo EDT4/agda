@@ -526,7 +526,7 @@ data Declaration
   | Import      Range QName (Maybe AsName) !OpenShortHand ImportDirective
   | ModuleMacro Range Erased  Name ModuleApplication !OpenShortHand
                 ImportDirective
-  | Module      Range Erased QName Telescope [Declaration]
+  | Module      Range Erased QName Telescope !OpenShortHand ImportDirective [Declaration]
   | UnquoteDecl Range [Name] Expr
       -- ^ @unquoteDecl xs = e@
   | UnquoteDef  Range [Name] Expr
@@ -550,7 +550,7 @@ isPragma = \case
     Abstract _ _            -> empty
     InstanceB _ _           -> empty
     Mutual _ _              -> empty
-    Module _ _ _ _ _        -> empty
+    Module _ _ _ _ _ _ _    -> empty
     Macro _ _               -> empty
     Record _ _ _ _ _ _ _    -> empty
     RecordDef _ _ _ _ _     -> empty
@@ -993,7 +993,7 @@ instance HasRange Declaration where
   getRange (Private kwr _ ds)      = fuseRange kwr ds
   getRange (Postulate kwr ds)      = fuseRange kwr ds
   getRange (Primitive kwr ds)      = fuseRange kwr ds
-  getRange (Module r _ _ _ _)      = r
+  getRange (Module r _ _ _ _ _ _)  = r
   getRange (Infix f _)             = getRange f
   getRange (Syntax n _)            = getRange n
   getRange (PatternSyn r _ _ _)    = r
@@ -1152,7 +1152,7 @@ instance KillRange Declaration where
                                     = killRangeN
                                         (\e n m -> ModuleMacro noRange e n m o)
                                         e n m i
-  killRange (Module _ e q t d)      = killRangeN (Module noRange) e q t d
+  killRange (Module _ e q t o i d)  = killRangeN (\e q t -> Module noRange e q t o) e q t i d
   killRange (UnquoteDecl _ x t)     = killRangeN (UnquoteDecl noRange) x t
   killRange (UnquoteDef _ x t)      = killRangeN (UnquoteDef noRange) x t
   killRange (UnquoteData _ xs cs t) = killRangeN (UnquoteData noRange) xs cs t
@@ -1381,7 +1381,7 @@ instance NFData Declaration where
   rnf (Import _ a b _ c)      = rnf a `seq` rnf b `seq` rnf c
   rnf (ModuleMacro _ a b c _ d)
                               = rnf a `seq` rnf b `seq` rnf c `seq` rnf d
-  rnf (Module _ a b c d)      = rnf a `seq` rnf b `seq` rnf c `seq` rnf d
+  rnf (Module _ a b c _ d e)  = rnf a `seq` rnf b `seq` rnf c `seq` rnf d `seq` rnf e
   rnf (UnquoteDecl _ a b)     = rnf a `seq` rnf b
   rnf (UnquoteDef _ a b)      = rnf a `seq` rnf b
   rnf (UnquoteData _ a b c)   = rnf a `seq` rnf b `seq` rnf c

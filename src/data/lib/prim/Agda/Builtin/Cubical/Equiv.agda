@@ -52,7 +52,7 @@ equivProof A B w a ψ fb =
 {-# BUILTIN EQUIVFUN   equivFun   #-}
 {-# BUILTIN EQUIVPROOF equivProof #-}
 
-module _ {ℓ : I → Level} (P : (i : I) → Set (ℓ i)) where
+section {ℓ : I → Level} (P : (i : I) → Set (ℓ i)) where
   private
     E : (i : I) → Set (ℓ i)
     E  = λ i → P i
@@ -76,7 +76,7 @@ module _ {ℓ : I → Level} (P : (i : I) → Set (ℓ i)) where
 
     fiberPath : (y : B) → (xβ0 xβ1 : fiber f y) → xβ0 ≡ xβ1
     fiberPath y (x0 , β0) (x1 , β1) k = ω , λ j → δ (~ j) where
-      module _ (j : I) where
+      section (j : I) where
         private
           sys : A → ∀ i → PartialP (~ j ∨ j) (λ _ → E (~ i))
           sys x i (j = i0) = v (~ i) y

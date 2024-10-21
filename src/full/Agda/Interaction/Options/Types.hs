@@ -207,6 +207,8 @@ data PragmaOptions = PragmaOptions
       -- ^ Allow recursion on forced constructor arguments.
   , _optAllowExplicitGenVars      :: WithDefault 'False
       -- ^ Allow the use of explicit generalized variables.
+  , _optOpenPubAnonMod            :: WithDefault 'True
+      -- ^ Always open and publicize anonymous modules.
   }
   deriving (Show, Eq, Generic)
 
