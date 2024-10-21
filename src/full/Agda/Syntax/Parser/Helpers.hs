@@ -284,6 +284,7 @@ onlyErased as = do
     RelevanceAttribute{} -> unsup "Relevance"
     CohesionAttribute{}  -> unsup "Cohesion"
     LockAttribute{}      -> unsup "Lock"
+    InstAttribute{}      -> unsup "Instance"
     CA.TacticAttribute{} -> unsup "Tactic"
     QuantityAttribute q  -> maybe (unsup "Linearity") (return . Just) $ erasedFromQuantity q
     where
@@ -518,11 +519,11 @@ patternSynArgs = mapM \ x -> do
         case ai of
 
           -- Benign case:
-          ArgInfo h (Modality Relevant{} (Quantityω _) Continuous) UserWritten UnknownFVs (Annotation IsNotLock) ->
+          ArgInfo h (Modality Relevant{} (Quantityω _) Continuous) UserWritten UnknownFVs (Annotation IsNotLock _) ->
             return $ WithHiding h n
 
           -- Error cases:
-          ArgInfo _ _ _ _ (Annotation (IsLock _)) ->
+          ArgInfo _ _ _ _ (Annotation (IsLock _) _) ->
             abort $ noAnn "Lock"
 
           ArgInfo h (Modality r q c) _ _ _

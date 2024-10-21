@@ -96,6 +96,14 @@ instance Pretty Lock where
 prettyLock :: LensLock a => a -> Doc -> Doc
 prettyLock a = (pretty (getLock a) <+>)
 
+instance Pretty InstAnnot where
+  pretty = \case
+    IsInstAnnot    -> "@inst"
+    IsNotInstAnnot -> empty
+
+prettyInstAnnot :: LensInstAnnot a => a -> Doc -> Doc
+prettyInstAnnot a = (pretty (getInstAnnot a) <+>)
+
 prettyErased :: Erased -> Doc -> Doc
 prettyErased = prettyQuantity . asQuantity
 
@@ -338,7 +346,7 @@ instance Pretty a => Pretty (Binder' a) where
 
 instance Pretty NamedBinding where
   pretty (NamedBinding withH
-           x@(Arg (ArgInfo h (Modality r q c) _o _fv (Annotation lock))
+           x@(Arg (ArgInfo h (Modality r q c) _o _fv (Annotation lock inst))
                (Named _mn xb@(Binder _mp _ (BName _y _fix t _fin))))) =
     applyWhen withH prH $
     applyWhenJust (isLabeled x) (\ l -> (text l <+>) . ("=" <+>)) (pretty xb)
@@ -350,13 +358,15 @@ instance Pretty NamedBinding where
         . (coh <+>)
         . (qnt <+>)
         . (lck <+>)
+        . (ins <+>)
         . (tac <+>)
     coh = pretty c
     qnt = pretty q
     tac = pretty t
     lck = pretty lock
+    ins = pretty inst
     -- Parentheses are needed when an attribute @... is printed
-    mparens = applyUnless (null coh && null qnt && null lck && null tac) parens
+    mparens = applyUnless (null coh && null qnt && null lck && null ins && null tac) parens
 
 
 instance Pretty LamBinding where
@@ -374,6 +384,7 @@ instance Pretty TypedBinding where
         $ prettyCohesion y
         $ prettyQuantity y
         $ prettyLock y
+        $ prettyInstAnnot y
         $ prettyTactic (binderName $ namedArg y) $
         sep [ fsep (map (pretty . NamedBinding False) ys)
             , ":" <+> pretty e ]

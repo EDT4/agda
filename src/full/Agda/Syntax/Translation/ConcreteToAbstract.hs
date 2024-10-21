@@ -3636,6 +3636,7 @@ checkAttributes ((attr, r, s) : attrs) =
       unlessM (optGuarded <$> pragmaOptions) $
         setCurrentRange r $ typeError $ AttributeKindNotEnabled "Lock" "--guarded" s
       cont
+    InstAttribute{}         -> cont
     QuantityAttribute Quantityω{} -> cont
     QuantityAttribute Quantity1{} -> __IMPOSSIBLE__
     QuantityAttribute Quantity0{} -> do

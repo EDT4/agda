@@ -117,7 +117,7 @@ initialInstanceCandidates blockOverlap instTy = do
       let varsAndRaisedTypes = [ (var i, raise (i + 1) t) | (i, t) <- zip [0..] ctx ]
           vars = [ Candidate LocalCandidate x t (infoOverlapMode info)
                  | (x, Dom{domInfo = info, unDom = (_, t)}) <- varsAndRaisedTypes
-                 , isInstance info
+                 , isInstance info || hasInstAnnot info
                  ]
 
       -- {{}}-fields of variables are also candidates
@@ -133,7 +133,7 @@ initialInstanceCandidates blockOverlap instTy = do
       env <- mapM (traverse getOpen) $ Map.toList env
       let lets = [ Candidate LocalCandidate v t DefaultOverlap
                  | (_, LetBinding _ v Dom{domInfo = info, unDom = t}) <- env
-                 , isInstance info
+                 , isInstance info || hasInstAnnot info
                  , usableModality info
                  ]
       filterM (sameHead cls . candidateType) $ vars ++ fields ++ lets
@@ -175,7 +175,7 @@ initialInstanceCandidates blockOverlap instTy = do
         let types = map unDom $ applySubst (parallelS $ reverse $ map unArg args) (flattenTel tel)
         fmap concat $ forM (zip args types) $ \ (arg, t) ->
           ([ Candidate LocalCandidate (unArg arg) t (infoOverlapMode arg)
-           | isInstance arg
+           | isInstance arg || hasInstAnnot arg
            ] ++) <$>
           instanceFields' False (LocalCandidate, unArg arg, t)
 

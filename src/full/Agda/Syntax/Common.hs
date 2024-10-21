@@ -1616,6 +1616,7 @@ data Annotation = Annotation
   { annLock :: Lock
     -- ^ Fitch-style dependent right adjoints.
     --   See Modal Dependent Type Theory and Dependent Right Adjoints, arXiv:1804.05236.
+  , annInst :: InstAnnot
   } deriving (Eq, Ord, Show, Generic)
 
 instance HasRange Annotation where
@@ -1625,14 +1626,14 @@ instance KillRange Annotation where
   killRange = id
 
 defaultAnnotation :: Annotation
-defaultAnnotation = Annotation defaultLock
+defaultAnnotation = Annotation defaultLock defaultInstAnnot
 
 instance Null Annotation where
   empty = defaultAnnotation
-  null (Annotation lock) = null lock
+  null (Annotation lock inst) = null lock && null inst
 
 instance NFData Annotation where
-  rnf (Annotation l) = rnf l
+  rnf (Annotation l i) = rnf l `seq` rnf i
 
 class LensAnnotation a where
 
@@ -1708,6 +1709,47 @@ instance LensLock ArgInfo where
 instance LensLock (Arg t) where
   getLock = getLock . getArgInfo
   setLock = mapArgInfo . setLock
+
+---------------------------------------------------------------------------
+-- * Instance Annotations
+---------------------------------------------------------------------------
+
+data InstAnnot
+  = IsNotInstAnnot
+  | IsInstAnnot
+  deriving (Show, Generic, Eq, Ord)
+
+defaultInstAnnot :: InstAnnot
+defaultInstAnnot = IsNotInstAnnot
+
+instance Null InstAnnot where
+  empty = defaultInstAnnot
+
+instance NFData InstAnnot where
+  rnf IsNotInstAnnot = ()
+  rnf IsInstAnnot    = ()
+
+class LensInstAnnot a where
+  getInstAnnot :: a -> InstAnnot
+  setInstAnnot :: InstAnnot -> a -> a
+
+instance LensInstAnnot InstAnnot where
+  getInstAnnot = id
+  setInstAnnot = const
+
+instance LensInstAnnot ArgInfo where
+  getInstAnnot = annInst . argInfoAnnotation
+  setInstAnnot l info = info { argInfoAnnotation = (argInfoAnnotation info){ annInst = l } }
+
+instance LensInstAnnot (Arg t) where
+  getInstAnnot = getInstAnnot . getArgInfo
+  setInstAnnot = mapArgInfo . setInstAnnot
+
+hasInstAnnot :: LensInstAnnot a => a -> Bool
+hasInstAnnot x =
+  case getInstAnnot x of
+    IsInstAnnot -> True
+    _           -> False
 
 ---------------------------------------------------------------------------
 -- * Cohesion

@@ -669,7 +669,7 @@ instance EmbPrj Relevance where
     _      -> malformed
 
 instance EmbPrj Annotation where
-  icod_ (Annotation l) = icodeN' Annotation l
+  icod_ (Annotation l i) = icodeN' Annotation l i
 
   value = valueN Annotation
 
@@ -681,6 +681,14 @@ instance EmbPrj Lock where
   value 0 = pure IsNotLock
   value 1 = pure (IsLock LockOTick)
   value 2 = pure (IsLock LockOLock)
+  value _ = malformed
+
+instance EmbPrj InstAnnot where
+  icod_ IsNotInstAnnot = pure 0
+  icod_ IsInstAnnot    = pure 1
+
+  value 0 = pure IsNotInstAnnot
+  value 1 = pure IsInstAnnot
   value _ = malformed
 
 instance EmbPrj Origin where
