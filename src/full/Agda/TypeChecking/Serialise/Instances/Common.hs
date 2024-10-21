@@ -521,6 +521,14 @@ instance EmbPrj a => EmbPrj (HasEta' a) where
 instance EmbPrj PatternOrCopattern
 instance EmbPrj OverlapMode
 
+instance EmbPrj ModParams where
+  icod_ (AnyModParams s) = icodeN' AnyModParams s
+  value = valueN AnyModParams
+
+instance EmbPrj ModSelf where
+  icod_ (AnyModSelf s) = icodeN' AnyModSelf s
+  value = valueN AnyModSelf
+
 instance EmbPrj Induction where
   icod_ Inductive   = icodeN' Inductive
   icod_ CoInductive = icodeN 1 CoInductive
@@ -832,10 +840,10 @@ instance EmbPrj IsInstance where
     _ -> malformed
 
 instance EmbPrj a => EmbPrj (RecordDirectives' a) where
-  icod_ (RecordDirectives a b c d) = icodeN' RecordDirectives a b c d
+  icod_ (RecordDirectives a b c d e f) = icodeN' RecordDirectives a b c d e f
 
   value = vcase \case
-    [a, b, c, d] -> valuN RecordDirectives a b c d
+    [a, b, c, d, e, f] -> valuN RecordDirectives a b c d e f
     _ -> malformed
 
 instance EmbPrj RecordDirective where
@@ -844,10 +852,14 @@ instance EmbPrj RecordDirective where
     Eta a                -> icodeN 1 Eta a
     Induction a          -> icodeN 2 Induction a
     PatternOrCopattern a -> icodeN 3 PatternOrCopattern a
+    ModParams a          -> icodeN 4 ModParams a
+    ModSelf a            -> icodeN 5 ModSelf a
 
   value = vcase \case
     [0, a, b] -> valuN Constructor a b
     [1, a]    -> valuN Eta a
     [2, a]    -> valuN Induction a
     [3, a]    -> valuN PatternOrCopattern a
+    [4, a]    -> valuN ModParams a
+    [5, a]    -> valuN ModSelf a
     _ -> malformed

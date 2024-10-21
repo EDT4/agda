@@ -472,16 +472,20 @@ data RecordDirective
        -- ^ Range of @[no-]eta-equality@ keyword.
    | PatternOrCopattern Range
        -- ^ If declaration @pattern@ is present, give its range.
+   | ModParams (Ranged ModParams)
+   | ModSelf (Ranged ModSelf)
    deriving (Eq, Show)
 
 type RecordDirectives = RecordDirectives' (Maybe (Name, IsInstance))
 
 ungatherRecordDirectives :: RecordDirectives -> [RecordDirective]
-ungatherRecordDirectives (RecordDirectives ind eta pat con) = catMaybes
+ungatherRecordDirectives (RecordDirectives ind eta pat con mp ms) = catMaybes
   [ Induction <$> ind
   , Eta <$> eta
   , PatternOrCopattern <$> pat
   , uncurry Constructor <$> con
+  , ModParams <$> mp
+  , ModSelf <$> ms
   ]
 
 
@@ -967,6 +971,8 @@ instance HasRange RecordDirective where
   getRange (Eta a    )            = getRange a
   getRange (Constructor a b)      = getRange (a, b)
   getRange (PatternOrCopattern r) = r
+  getRange (ModParams a)          = getRange a
+  getRange (ModSelf a)            = getRange a
 
 instance HasRange Declaration where
   getRange (TypeSig _ _ x t)       = fuseRange x t
@@ -1120,6 +1126,8 @@ instance KillRange RecordDirective where
   killRange (Eta a    )            = killRangeN Eta a
   killRange (Constructor a b)      = killRangeN Constructor a b
   killRange (PatternOrCopattern _) = PatternOrCopattern noRange
+  killRange (ModParams a)          = killRangeN ModParams a
+  killRange (ModSelf a)            = killRangeN ModSelf a
 
 instance KillRange Declaration where
   killRange (TypeSig i t n e)       = killRangeN (TypeSig i) t n e
@@ -1351,6 +1359,8 @@ instance NFData RecordDirective where
   rnf (Eta a    )            = rnf a
   rnf (Constructor a b)      = rnf (a, b)
   rnf (PatternOrCopattern _) = ()
+  rnf (ModParams a)          = rnf a
+  rnf (ModSelf a)            = rnf a
 
 instance NFData Declaration where
   rnf (TypeSig a b c d)       = rnf a `seq` rnf b `seq` rnf c `seq` rnf d

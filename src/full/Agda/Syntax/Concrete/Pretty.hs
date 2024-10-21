@@ -609,6 +609,8 @@ pRecordDirective = \case
       NotInstanceDef{} -> empty
   Eta eta -> pHasEta0 (rangedThing eta)
   PatternOrCopattern{} -> "pattern"
+  ModParams mp -> pretty (rangedThing mp)
+  ModSelf ms -> pretty (rangedThing ms)
 
 pRecord
   :: Erased
