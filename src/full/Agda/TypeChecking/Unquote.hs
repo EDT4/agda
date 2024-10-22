@@ -171,7 +171,7 @@ class Unquote a where
 -- (This means, it should be visible, relevant, etc., like 'defaultArg').
 unquoteN :: (HasCallStack, Unquote a) => Arg Term -> UnquoteM a
 unquoteN (Arg info v) =
-  if null info then unquote v else __IMPOSSIBLE__
+  if visible info then unquote v else __IMPOSSIBLE__
     -- because we have a CallStack, this also includes the caller
 
 choice :: Monad m => [(m Bool, m a)] -> m a -> m a

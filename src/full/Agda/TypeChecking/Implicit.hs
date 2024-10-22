@@ -85,7 +85,7 @@ implicitNamedArgs n expand t0 = do
     case unEl t0' of
       Pi dom@Dom{domInfo = info, domTactic = tac, unDom = a} b
         | let x = bareNameWithDefault "_" dom, expand (getHiding info) x -> do
-          kind <- if hidden info then return UnificationMeta else do
+          kind <- if hidden info && not(hasInstAnnot info) then return UnificationMeta else do
             reportSDoc "tc.term.args.ifs" 15 $
               "inserting instance meta for type" <+> prettyTCM a
             reportSDoc "tc.term.args.ifs" 40 $ nest 2 $ vcat

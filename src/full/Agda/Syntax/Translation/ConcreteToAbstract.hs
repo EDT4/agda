@@ -2247,9 +2247,9 @@ instance ToAbstract NiceDeclaration where
         checkPatSynParam (WithHiding h x) = do
           let err = setCurrentRange x . typeError
           resolveName (C.QName x) >>= \case
-            VarName a (PatternBound h')
-              | isInstance h, not (isInstance h') -> err $ IllegalInstanceVariableInPatternSynonym x
-              | otherwise -> return $ WithHiding h a
+            VarName a (PatternBound h'){-
+              | isInstance h, not (isInstance h'), not (hasInstAnnot h') -> err $ IllegalInstanceVariableInPatternSynonym x
+              | otherwise-} -> return $ WithHiding h a -- TODO: This just removes the check for instance variables in patterns because it seems like too much work to include @inst annotations to patterns (WithHiding is used for pattern variables. Would probably have to replace it with ArgInfo or something similar).
             ConstructorName _ ys -> err $ PatternSynonymArgumentShadows IsConstructor x ys
             PatternSynResName ys -> err $ PatternSynonymArgumentShadows IsPatternSynonym x ys
             UnknownName -> err $ UnusedVariableInPatternSynonym x
@@ -3644,6 +3644,7 @@ checkAttributes ((attr, r, s) : attrs) =
       unlessM (optGuarded <$> pragmaOptions) $
         setCurrentRange r $ typeError $ AttributeKindNotEnabled "Lock" "--guarded" s
       cont
+    InstAttribute{}         -> cont
     QuantityAttribute Quantityω{} -> cont
     QuantityAttribute Quantity1{} -> __IMPOSSIBLE__
     QuantityAttribute Quantity0{} -> do

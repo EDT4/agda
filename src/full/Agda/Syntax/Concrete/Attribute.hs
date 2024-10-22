@@ -30,6 +30,7 @@ data Attribute
   | TacticAttribute (Ranged Expr)
   | CohesionAttribute Cohesion
   | LockAttribute      Lock
+  | InstAttribute      InstAnnot
   deriving (Show)
 
 instance HasRange Attribute where
@@ -39,6 +40,7 @@ instance HasRange Attribute where
     CohesionAttribute c  -> getRange c
     TacticAttribute e    -> getRange e
     LockAttribute l      -> NoRange
+    InstAttribute l      -> NoRange
 
 instance SetRange Attribute where
   setRange r = \case
@@ -47,6 +49,7 @@ instance SetRange Attribute where
     CohesionAttribute c  -> CohesionAttribute  $ setRange r c
     TacticAttribute e    -> TacticAttribute e  -- -- $ setRange r e -- SetRange Expr not yet implemented
     LockAttribute l      -> LockAttribute l
+    InstAttribute i      -> InstAttribute i
 
 instance KillRange Attribute where
   killRange = \case
@@ -55,10 +58,11 @@ instance KillRange Attribute where
     CohesionAttribute c  -> CohesionAttribute  $ killRange c
     TacticAttribute e    -> TacticAttribute    $ killRange e
     LockAttribute l      -> LockAttribute l
+    InstAttribute i      -> InstAttribute i
 
 -- | (Conjunctive constraint.)
 
-type LensAttribute a = (LensRelevance a, LensQuantity a, LensCohesion a, LensLock a)
+type LensAttribute a = (LensRelevance a, LensQuantity a, LensCohesion a, LensLock a, LensInstAnnot a)
 
 -- | Modifiers for 'Relevance'.
 
@@ -116,6 +120,12 @@ lockAttributeTable = concat
   , map (, IsLock LockOLock) [ "lock" ] -- @lock
   ]
 
+instAttributeTable :: [(String, InstAnnot)]
+instAttributeTable = concat
+  [ map (, IsNotInstAnnot) [ "notinst" ] -- default, shouldn't be used much
+  , map (, IsInstAnnot)    [ "inst" ] -- @inst
+  ]
+
 
 -- | Concrete syntax for all attributes.
 
@@ -125,6 +135,7 @@ attributesMap = Map.fromListWith __IMPOSSIBLE__ $ concat
   , map (second QuantityAttribute)  quantityAttributeTable
   , map (second CohesionAttribute)  cohesionAttributeTable
   , map (second LockAttribute)      lockAttributeTable
+  , map (second InstAttribute)      instAttributeTable
   ]
 
 -- | Parsing a string into an attribute.
@@ -147,6 +158,7 @@ setAttribute = \case
   QuantityAttribute  q -> setQuantity  q
   CohesionAttribute  c -> setCohesion  c
   LockAttribute      l -> setLock      l
+  InstAttribute      i -> setInstAnnot i
   TacticAttribute t    -> id
 
 
@@ -189,6 +201,13 @@ setPristineLock q a
   | getLock a == defaultLock = Just $ setLock q a
   | otherwise = Nothing
 
+-- | Setting 'InstAnnot' if unset.
+
+setPristineInstAnnot :: (LensInstAnnot a) => InstAnnot -> a -> Maybe a
+setPristineInstAnnot q a
+  | getInstAnnot a == defaultInstAnnot = Just $ setInstAnnot q a
+  | otherwise = Nothing
+
 -- | Setting an unset attribute (to e.g. an 'Arg').
 
 setPristineAttribute :: (LensAttribute a) => Attribute -> a -> Maybe a
@@ -197,6 +216,7 @@ setPristineAttribute = \case
   QuantityAttribute  q -> setPristineQuantity  q
   CohesionAttribute  c -> setPristineCohesion  c
   LockAttribute      l -> setPristineLock      l
+  InstAttribute      i -> setPristineInstAnnot i
   TacticAttribute{}    -> Just
 
 -- | Setting a list of unset attributes.
